@@ -87,6 +87,7 @@ const {
   NO_ACCESS_MESSAGE,
   MASTER_ONLY_MESSAGE,
   parseAdminIds,
+  isAdmin,
 } = require('./src/bot/guards/access');
 
 const trialFile = TRIAL_DB_PATH;
@@ -1958,7 +1959,7 @@ logger.info('Bot initialized');
 
 async function handleSetGopayApiKey(ctx) {
   if (!ensurePrivateChat(ctx)) return;
-  if (!ctx.from || !ADMIN_IDS.includes(ctx.from.id)) {
+  if (!isAdmin(ctx.from?.id, ADMIN_IDS)) {
     return ctx.reply(NO_ACCESS_MESSAGE, { parse_mode: 'HTML' });
   }
 
@@ -2011,7 +2012,7 @@ async function handleSetGopayApiKey(ctx) {
 
 async function handleCancelGopayApiKeyInput(ctx) {
   if (!ensurePrivateChat(ctx)) return;
-  if (!ctx.from || !ADMIN_IDS.includes(ctx.from.id)) {
+  if (!isAdmin(ctx.from?.id, ADMIN_IDS)) {
     return ctx.reply(NO_ACCESS_MESSAGE, { parse_mode: 'HTML' });
   }
 
@@ -2024,7 +2025,7 @@ bot.command('batalsetgopayapikey', handleCancelGopayApiKeyInput);
 
 bot.on('text', async (ctx, next) => {
   if (!ensurePrivateChat(ctx)) return next();
-  if (!ctx.from || !ADMIN_IDS.includes(ctx.from.id)) return next();
+  if (!isAdmin(ctx.from?.id, ADMIN_IDS)) return next();
   if (!hasPendingGopayApiKeyInput(ctx.from.id)) return next();
 
   const text = normalizeGopayCredentialInput(ctx.message?.text || '');
@@ -2052,7 +2053,7 @@ bot.on('text', async (ctx, next) => {
 
 async function handleCheckGopayApiKey(ctx) {
   if (!ensurePrivateChat(ctx)) return;
-  if (!ctx.from || !ADMIN_IDS.includes(ctx.from.id)) {
+  if (!isAdmin(ctx.from?.id, ADMIN_IDS)) {
     return ctx.reply(NO_ACCESS_MESSAGE, { parse_mode: 'HTML' });
   }
 
