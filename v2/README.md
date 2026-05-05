@@ -42,6 +42,7 @@ This is a clean, modular scaffold for a Telegram VPN sales bot.
 ## Main commands
 
 - `/start` or `/menu`: open dashboard
+- `/status`: check bot status (normal/maintenance)
 - `/me`: profile + role
 - `/saldo`: current balance
 - `/setrole <user_id> <member|reseller>`: admin only

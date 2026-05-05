@@ -890,6 +890,31 @@ function registerMenuHandlers(bot, db) {
     return ctx.reply('Mode tidak valid. Gunakan: show, reset, atau set');
   });
 
+  bot.command('status', async (ctx) => {
+    const maintenanceFlag = await getSetting(db, 'maintenance_enabled');
+    const isMaintenance = String(maintenanceFlag || 'false').toLowerCase() === 'true';
+    const customMessage = await getSetting(db, 'maintenance_message');
+
+    const header = isMaintenance ? '⚠️ <b>Status Bot: Maintenance</b>' : '✅ <b>Status Bot: Normal</b>';
+    const message = isMaintenance
+      ? String(customMessage || '').trim() || 'Bot sedang maintenance. Silakan coba lagi beberapa saat.'
+      : 'Semua layanan utama sedang aktif.';
+
+    const text = [
+      header,
+      '',
+      message,
+      '',
+      '<b>Layanan tersedia:</b>',
+      '• Cek status: /status',
+      '• Menu utama: /menu',
+      '• Cek saldo: /saldo',
+      '• Topup: /menu → Topup QRIS',
+    ].join('\n');
+
+    return ctx.reply(text, { parse_mode: 'HTML' });
+  });
+
   bot.on('text', async (ctx, next) => {
     const current = getState(ctx.from.id);
     if (!current) return next();

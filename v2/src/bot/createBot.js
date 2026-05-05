@@ -22,6 +22,10 @@ function createBot({ db }) {
     const isMaintenance = String(maintenanceFlag || 'false').toLowerCase() === 'true';
     if (!isMaintenance) return next();
 
+    const messageText = String(ctx.message?.text || '').trim().toLowerCase();
+    const isStatusCommand = messageText === '/status' || messageText.startsWith('/status@');
+    if (isStatusCommand) return next();
+
     const customMessage = await getSetting(db, 'maintenance_message');
     const maintenanceText = String(customMessage || '').trim() || '⚠️ Bot sedang maintenance. Silakan coba lagi beberapa saat.';
 
