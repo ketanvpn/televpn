@@ -5050,7 +5050,7 @@ bot.command('addserver', async (ctx) => {
 	// Wajib di private chat
   if (!ensurePrivateChat(ctx)) return;
   const userId = ctx.message.from.id;
-  if (!ADMIN_IDS.includes(userId)) {
+  if (!isAdmin(userId, ADMIN_IDS)) {
   return ctx.reply(NO_ACCESS_MESSAGE, { parse_mode: 'HTML' });
 }
 
@@ -5085,7 +5085,7 @@ bot.command('editharga', async (ctx) => {
   if (!ensurePrivateChat(ctx)) return;
 
   const userId = ctx.message.from.id;
-  if (!ADMIN_IDS.includes(userId)) {
+  if (!isAdmin(userId, ADMIN_IDS)) {
     return ctx.reply(NO_ACCESS_MESSAGE, { parse_mode: 'HTML' });
   }
 
@@ -5149,7 +5149,7 @@ bot.command('editnama', async (ctx) => {
   if (!ensurePrivateChat(ctx)) return;
 
   const userId = ctx.message.from.id;
-  if (!ADMIN_IDS.includes(userId)) {
+  if (!isAdmin(userId, ADMIN_IDS)) {
     return ctx.reply(NO_ACCESS_MESSAGE, { parse_mode: 'HTML' });
   }
 
@@ -5230,7 +5230,7 @@ bot.command('editauth', async (ctx) => {
   if (!ensurePrivateChat(ctx)) return;
 
   const userId = ctx.message.from.id;
-  if (!ADMIN_IDS.includes(userId)) {
+  if (!isAdmin(userId, ADMIN_IDS)) {
     return ctx.reply(NO_ACCESS_MESSAGE, { parse_mode: 'HTML' });
   }
 
@@ -5275,7 +5275,7 @@ bot.command('editlimitquota', async (ctx) => {
   if (!ensurePrivateChat(ctx)) return;
 
   const userId = ctx.message.from.id;
-  if (!ADMIN_IDS.includes(userId)) {
+  if (!isAdmin(userId, ADMIN_IDS)) {
     return ctx.reply(NO_ACCESS_MESSAGE, { parse_mode: 'HTML' });
   }
 
@@ -5331,7 +5331,7 @@ bot.command('editlimitip', async (ctx) => {
   if (!ensurePrivateChat(ctx)) return;
 
   const userId = ctx.message.from.id;
-  if (!ADMIN_IDS.includes(userId)) {
+  if (!isAdmin(userId, ADMIN_IDS)) {
     return ctx.reply(NO_ACCESS_MESSAGE, { parse_mode: 'HTML' });
   }
 
@@ -5387,7 +5387,7 @@ bot.command('editlimitcreate', async (ctx) => {
   if (!ensurePrivateChat(ctx)) return;
 
   const userId = ctx.message.from.id;
-  if (!ADMIN_IDS.includes(userId)) {
+  if (!isAdmin(userId, ADMIN_IDS)) {
     return ctx.reply(NO_ACCESS_MESSAGE, { parse_mode: 'HTML' });
   }
 
@@ -5445,7 +5445,7 @@ bot.command('edittotalcreate', async (ctx) => {
 	// Wajib di private chat
   if (!ensurePrivateChat(ctx)) return;
   const userId = ctx.message.from.id;
-  if (!ADMIN_IDS.includes(userId)) {
+  if (!isAdmin(userId, ADMIN_IDS)) {
   return ctx.reply(NO_ACCESS_MESSAGE, { parse_mode: 'HTML' });
 }
 
