@@ -11,8 +11,10 @@ Selesai:
 - Extract formatter `rupiah` ke `src/core/formatters.js`
 - Extract helper Markdown-to-HTML ke `src/core/telegramSafeHtml.js`
 - Extract `.vars.json` store ke `src/core/varsStore.js`
+- Extract template pesan standar ke `src/bot/ui/messages.js`
+- Extract helper toast callback ke `src/bot/ui/toast.js`
 - Update `app.js` agar memakai module core baru
-- Syntax check `app.js`, `logger.js`, `paths.js`, `formatters.js`, `telegramSafeHtml.js`, dan `varsStore.js` bersih
+- Syntax check `app.js`, `logger.js`, `paths.js`, `formatters.js`, `telegramSafeHtml.js`, `varsStore.js`, `messages.js`, dan `toast.js` bersih
 
 ## File Baru
 
@@ -21,6 +23,8 @@ Selesai:
 - `src/core/formatters.js`
 - `src/core/telegramSafeHtml.js`
 - `src/core/varsStore.js`
+- `src/bot/ui/messages.js`
+- `src/bot/ui/toast.js`
 
 ## Perubahan di app.js
 
@@ -29,6 +33,8 @@ Selesai:
 - `rupiah` sekarang dipakai dari `src/core/formatters.js`
 - `mdToHtml` sekarang dipakai dari `src/core/telegramSafeHtml.js`
 - Load/read/write `.vars.json` sekarang didelegasikan ke `src/core/varsStore.js`
+- `msgSuccess`, `msgError`, `msgInfo` sekarang dipakai dari `src/bot/ui/messages.js`
+- `toast` dan `toastError` sekarang dipakai dari `src/bot/ui/toast.js`
 
 ## Belum Dipindah
 
@@ -50,6 +56,8 @@ node --check src/core/paths.js
 node --check src/core/formatters.js
 node --check src/core/telegramSafeHtml.js
 node --check src/core/varsStore.js
+node --check src/bot/ui/messages.js
+node --check src/bot/ui/toast.js
 ```
 
 Hasil: tidak ada error syntax.
@@ -58,6 +66,6 @@ Hasil: tidak ada error syntax.
 
 Lanjut ekstraksi kecil berikutnya:
 
-1. Extract helper clean menu/middleware Telegram.
+1. Extract helper clean menu dengan hati-hati karena punya state `lastMenuMsgId`.
 2. Extract middleware license/callback lock.
 3. Setelah itu baru masuk repository/query layer kecil.

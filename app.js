@@ -70,6 +70,8 @@ const { VARS_PATH, TRIAL_DB_PATH, TRIAL_CONFIG_PATH } = require('./src/core/path
 const { rupiah } = require('./src/core/formatters');
 const { mdToHtml } = require('./src/core/telegramSafeHtml');
 const varsStore = require('./src/core/varsStore');
+const { msgSuccess, msgError, msgInfo } = require('./src/bot/ui/messages');
+const { toast, toastError } = require('./src/bot/ui/toast');
 
 const trialFile = TRIAL_DB_PATH;
 const trialConfigFile = TRIAL_CONFIG_PATH;
@@ -1620,21 +1622,10 @@ async function sendCleanMenu(ctx, text, extra = {}) {
   if (sent?.message_id) lastMenuMsgId.set(userId, sent.message_id);
 }
 
-// === Helper notifikasi singkat ke user (cbQuery / edit menu) ===
-async function toast(ctx, text, { alert = false } = {}) {
-  try { await ctx.answerCbQuery(text, { show_alert: alert }); } catch (_) {}
-}
-async function toastError(ctx, text) {
-  await toast(ctx, `⚠️ ${text}`);
-}
 async function showErrorOnMenu(ctx, htmlText) {
   await sendCleanMenu(ctx, `⚠️ <b>Terjadi kesalahan</b>\n${htmlText}`, { parse_mode: 'HTML' });
 }
 
-// === Template pesan standar (HTML) ===
-function msgSuccess(t){ return `✅ <b>Berhasil</b>\n${t}`; }
-function msgError(t){ return `❌ <b>Gagal</b>\n${t}`; }
-function msgInfo(t){ return `ℹ️ <b>Info</b>\n${t}`; }
 async function getUserSaldo(db, userId) {
   return await new Promise((resolve) => {
     db.get('SELECT saldo FROM users WHERE user_id = ?', [userId], (e, r) => {
