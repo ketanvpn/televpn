@@ -304,6 +304,7 @@ function registerMenuHandlers(bot, db) {
       '• <code>/dailyreportnow</code> kirim laporan harian sekarang',
       '• <code>/adminlogs</code> lihat audit action admin',
       '• <code>/maintenance on|off</code> toggle mode maintenance',
+      '• <code>/maintmsg show|reset|set ...</code> atur pesan maintenance',
       '• /menu kembali ke menu utama',
     ].join('\n');
 
@@ -842,6 +843,51 @@ function registerMenuHandlers(bot, db) {
     });
 
     return ctx.reply(enabled ? '✅ Maintenance ON' : '✅ Maintenance OFF');
+  });
+
+  bot.command('maintmsg', async (ctx) => {
+    const row = await getUserById(db, ctx.from.id);
+    const actorRole = getEffectiveRole(ctx.from.id, row ? row.role : 'member');
+    if (!canAccessAdmin(actorRole)) return ctx.reply('Tidak punya akses.');
+
+    const raw = String(ctx.message.text || '').replace(/^\/maintmsg\s*/i, '').trim();
+    if (!raw) {
+      return ctx.reply('Format:\n/maintmsg show\n/maintmsg reset\n/maintmsg set <pesan>');
+    }
+
+    const parts = raw.split(/\s+/);
+    const mode = String(parts[0] || '').toLowerCase();
+
+    if (mode === 'show') {
+      const current = await getSetting(db, 'maintenance_message');
+      const text = String(current || '').trim() || '⚠️ Bot sedang maintenance. Silakan coba lagi beberapa saat.';
+      return ctx.reply(`Pesan maintenance saat ini:\n${text}`);
+    }
+
+    if (mode === 'reset') {
+      await setSetting(db, 'maintenance_message', '');
+      await logAdminAction(db, {
+        adminUserId: ctx.from.id,
+        action: 'maintenance_message_reset',
+      });
+      return ctx.reply('✅ Pesan maintenance direset ke default.');
+    }
+
+    if (mode === 'set') {
+      const message = raw.replace(/^set\s*/i, '').trim();
+      if (!message) return ctx.reply('Pesan kosong. Contoh: /maintmsg set Sedang maintenance sampai 22:30');
+      if (message.length > 500) return ctx.reply('Pesan terlalu panjang. Maksimal 500 karakter.');
+
+      await setSetting(db, 'maintenance_message', message);
+      await logAdminAction(db, {
+        adminUserId: ctx.from.id,
+        action: 'maintenance_message_set',
+        detail: `length=${message.length}`,
+      });
+      return ctx.reply('✅ Pesan maintenance berhasil diperbarui.');
+    }
+
+    return ctx.reply('Mode tidak valid. Gunakan: show, reset, atau set');
   });
 
   bot.on('text', async (ctx, next) => {

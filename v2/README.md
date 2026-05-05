@@ -63,6 +63,7 @@ This is a clean, modular scaffold for a Telegram VPN sales bot.
 - `/adminlogs`: show recent admin audit trail
 - `/dailyreportnow`: send daily report immediately (admin)
 - `/maintenance on|off`: toggle maintenance mode (admin)
+- `/maintmsg show|reset|set <pesan>`: manage maintenance announcement message
 
 Quick action buttons are available in `/menu`:
 - `Quick Create`

@@ -22,6 +22,9 @@ function createBot({ db }) {
     const isMaintenance = String(maintenanceFlag || 'false').toLowerCase() === 'true';
     if (!isMaintenance) return next();
 
+    const customMessage = await getSetting(db, 'maintenance_message');
+    const maintenanceText = String(customMessage || '').trim() || '⚠️ Bot sedang maintenance. Silakan coba lagi beberapa saat.';
+
     const userId = Number(ctx.from?.id || 0);
     if (!userId) return next();
 
@@ -31,13 +34,13 @@ function createBot({ db }) {
 
     if (ctx.callbackQuery) {
       try {
-        await ctx.answerCbQuery('Bot sedang maintenance. Coba lagi nanti.', { show_alert: true });
+        await ctx.answerCbQuery(maintenanceText.slice(0, 180), { show_alert: true });
       } catch (_) {}
       return null;
     }
 
     try {
-      await ctx.reply('⚠️ Bot sedang maintenance. Silakan coba lagi beberapa saat.');
+      await ctx.reply(maintenanceText);
     } catch (_) {}
     return null;
   });
