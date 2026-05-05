@@ -1,0 +1,15 @@
+node_modules/
+*.log
+bot-*.log
+
+# Runtime secrets/config
+.vars.json
+
+# Runtime databases and backups
+*.db
+*.sqlite
+*.sqlite3
+
+# OS/editor
+.DS_Store
+Thumbs.db
