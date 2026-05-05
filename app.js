@@ -67,6 +67,8 @@ const {
 const fsPromises = require('fs/promises');
 const path = require('path');
 const { VARS_PATH, TRIAL_DB_PATH, TRIAL_CONFIG_PATH } = require('./src/core/paths');
+const { rupiah } = require('./src/core/formatters');
+const { mdToHtml } = require('./src/core/telegramSafeHtml');
 
 const trialFile = TRIAL_DB_PATH;
 const trialConfigFile = TRIAL_CONFIG_PATH;
@@ -1513,22 +1515,6 @@ let lastBroadcastInfo = null;
 // Inisialisasi bot
 const bot = new Telegraf(BOT_TOKEN);
 
-// ==== Helper: konversi Markdown lama -> HTML aman ====
-function mdToHtml(text) {
-  if (text == null) return '';
-  let escaped = String(text)
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;');
-
-  // `code`
-  escaped = escaped.replace(/`([^`]+)`/g, '<code>$1</code>');
-  // *bold*
-  escaped = escaped.replace(/\*([^*]+)\*/g, '<b>$1</b>');
-
-  return escaped;
-}
-
 // Patch ctx.reply supaya semua parse_mode: 'Markdown' diubah ke HTML
 bot.use((ctx, next) => {
   const origReply = ctx.reply.bind(ctx);
@@ -1669,10 +1655,6 @@ async function showErrorOnMenu(ctx, htmlText) {
 function msgSuccess(t){ return `✅ <b>Berhasil</b>\n${t}`; }
 function msgError(t){ return `❌ <b>Gagal</b>\n${t}`; }
 function msgInfo(t){ return `ℹ️ <b>Info</b>\n${t}`; }
-function rupiah(n) {
-  return `Rp${Number(n || 0).toLocaleString('id-ID')}`;
-}
-
 async function getUserSaldo(db, userId) {
   return await new Promise((resolve) => {
     db.get('SELECT saldo FROM users WHERE user_id = ?', [userId], (e, r) => {
