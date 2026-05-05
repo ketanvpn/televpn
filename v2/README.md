@@ -54,6 +54,7 @@ This is a clean, modular scaffold for a Telegram VPN sales bot.
 - `/renew <type> <username> <days> <server_id>`: renew account
 - `/delete <type> <username> <server_id>`: delete account
 - `/backupnow`: send DB backup now (admin)
+- `/adminstats`: quick admin dashboard stats
 
 Quick action buttons are available in `/menu`:
 - `Quick Create`

@@ -33,6 +33,29 @@ function isSupportedType(type) {
   return ['ssh', 'vmess', 'vless', 'trojan'].includes(String(type || '').toLowerCase());
 }
 
+async function getAdminStats(db) {
+  const startOfDay = new Date();
+  startOfDay.setHours(0, 0, 0, 0);
+  const startTs = startOfDay.getTime();
+
+  const [users, activeAccounts, pendingQris, omzetToday] = await Promise.all([
+    db.get('SELECT COUNT(*) AS total FROM users'),
+    db.get("SELECT COUNT(*) AS total FROM accounts WHERE status = 'active'"),
+    db.get("SELECT COUNT(*) AS total FROM qris_payments WHERE status = 'pending'"),
+    db.get(
+      "SELECT COALESCE(SUM(amount), 0) AS total FROM transactions WHERE type IN ('qris_topup', 'manual_addsaldo') AND created_at >= ?",
+      [startTs]
+    ),
+  ]);
+
+  return {
+    users: Number(users?.total || 0),
+    activeAccounts: Number(activeAccounts?.total || 0),
+    pendingQris: Number(pendingQris?.total || 0),
+    omzetToday: Number(omzetToday?.total || 0),
+  };
+}
+
 async function renderMainMenu(ctx, db) {
   const row = await getUserById(db, ctx.from.id);
   if (!row) {
@@ -233,8 +256,16 @@ function registerMenuHandlers(bot, db) {
       return ctx.reply('Menu ini hanya untuk admin.');
     }
 
+    const stats = await getAdminStats(db);
+
     const text = [
       '<b>Panel Admin</b>',
+      '',
+      '<b>Ringkasan Hari Ini</b>',
+      `• Total user: <b>${stats.users}</b>`,
+      `• Akun aktif: <b>${stats.activeAccounts}</b>`,
+      `• Pending QRIS: <b>${stats.pendingQris}</b>`,
+      `• Omzet masuk: <b>${formatRupiah(stats.omzetToday)}</b>`,
       '',
       'Command penting:',
       '• <code>/setrole &lt;user_id&gt; &lt;member|reseller&gt;</code>',
@@ -251,8 +282,31 @@ function registerMenuHandlers(bot, db) {
 
     return ctx.reply(text, {
       parse_mode: 'HTML',
-      reply_markup: { inline_keyboard: [[{ text: 'Kembali', callback_data: 'menu:home' }]] },
+      reply_markup: {
+        inline_keyboard: [
+          [{ text: 'Refresh Stats', callback_data: 'menu:admin' }],
+          [{ text: 'Kembali', callback_data: 'menu:home' }],
+        ],
+      },
     });
+  });
+
+  bot.command('adminstats', async (ctx) => {
+    const row = await getUserById(db, ctx.from.id);
+    const actorRole = getEffectiveRole(ctx.from.id, row ? row.role : 'member');
+    if (!canAccessAdmin(actorRole)) return ctx.reply('Tidak punya akses.');
+
+    const stats = await getAdminStats(db);
+    return ctx.reply(
+      [
+        '<b>Admin Stats</b>',
+        `Total user: <b>${stats.users}</b>`,
+        `Akun aktif: <b>${stats.activeAccounts}</b>`,
+        `Pending QRIS: <b>${stats.pendingQris}</b>`,
+        `Omzet hari ini: <b>${formatRupiah(stats.omzetToday)}</b>`,
+      ].join('\n'),
+      { parse_mode: 'HTML' }
+    );
   });
 
   bot.command('setrole', async (ctx) => {
