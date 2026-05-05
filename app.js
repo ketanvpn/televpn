@@ -3302,7 +3302,7 @@ bot.command('health', async (ctx) => {
 bot.command('addhari', async (ctx) => {
 	// Wajib di private chat
   if (!ensurePrivateChat(ctx)) return;
-  if (!ctx.from || ctx.from.id !== MASTER_ID) {
+  if (!isMaster(ctx.from?.id, MASTER_ID)) {
     return ctx.reply(MASTER_ONLY_MESSAGE, { parse_mode: 'HTML' });
 }
 
@@ -3379,7 +3379,7 @@ bot.command('addhari', async (ctx) => {
 bot.command('kuranghari', async (ctx) => {
 	// Wajib di private chat
   if (!ensurePrivateChat(ctx)) return;
-  if (!ctx.from || ctx.from.id !== MASTER_ID) {
+  if (!isMaster(ctx.from?.id, MASTER_ID)) {
     return ctx.reply(MASTER_ONLY_MESSAGE, { parse_mode: 'HTML' });
 }
   const parts = ctx.message.text.trim().split(/\s+/);
@@ -3455,7 +3455,7 @@ bot.command('addsaldo', async (ctx) => {
   if (!ensurePrivateChat(ctx)) return;
 
   // Hanya admin yang boleh pakai
-  if (!ctx.from || !ADMIN_IDS.includes(ctx.from.id)) {
+  if (!isAdmin(ctx.from?.id, ADMIN_IDS)) {
     return ctx.reply(NO_ACCESS_MESSAGE, { parse_mode: 'HTML' });
   }
 
