@@ -3,6 +3,7 @@ const { listPendingQrisPaymentsByUser } = require('../../repositories/qrisPaymen
 const { listAccountsByUser, createAccountRecord, getLatestAccountByUserTypeUsername, updateAccountExpiry, markAccountDeleted, updateLatestAccountStatus } = require('../../repositories/accountRepository');
 const { listActiveServers, createServer } = require('../../repositories/serverRepository');
 const { logAdminAction, listRecentAdminLogs } = require('../../repositories/adminAuditRepository');
+const { getSetting, setSetting } = require('../../repositories/settingsRepository');
 const { createTopupInvoice, finalizeInvoiceAsPaid, checkInvoiceStatus } = require('../../services/qrisService');
 const { getEffectiveRole, canAccessAdmin, canAccessReseller } = require('../../services/roleService');
 const { createPaidAccount, createTrialAccount, renewAccount, deleteAccountOnProvider, lockAccountOnProvider, unlockAccountOnProvider } = require('../../services/provisioningService');
@@ -302,6 +303,7 @@ function registerMenuHandlers(bot, db) {
       '• <code>/backupnow</code> kirim backup database sekarang',
       '• <code>/dailyreportnow</code> kirim laporan harian sekarang',
       '• <code>/adminlogs</code> lihat audit action admin',
+      '• <code>/maintenance on|off</code> toggle mode maintenance',
       '• /menu kembali ke menu utama',
     ].join('\n');
 
@@ -812,6 +814,34 @@ function registerMenuHandlers(bot, db) {
     });
 
     return ctx.reply(lines.join('\n'), { parse_mode: 'HTML' });
+  });
+
+  bot.command('maintenance', async (ctx) => {
+    const row = await getUserById(db, ctx.from.id);
+    const actorRole = getEffectiveRole(ctx.from.id, row ? row.role : 'member');
+    if (!canAccessAdmin(actorRole)) return ctx.reply('Tidak punya akses.');
+
+    const parts = String(ctx.message.text || '').trim().split(/\s+/);
+    if (parts.length < 2) {
+      const current = await getSetting(db, 'maintenance_enabled');
+      const nowMode = String(current || 'false').toLowerCase() === 'true' ? 'ON' : 'OFF';
+      return ctx.reply(`Mode maintenance saat ini: ${nowMode}\nFormat: /maintenance on atau /maintenance off`);
+    }
+
+    const mode = String(parts[1] || '').toLowerCase();
+    if (!['on', 'off'].includes(mode)) {
+      return ctx.reply('Mode tidak valid. Pakai: /maintenance on atau /maintenance off');
+    }
+
+    const enabled = mode === 'on';
+    await setSetting(db, 'maintenance_enabled', enabled ? 'true' : 'false');
+    await logAdminAction(db, {
+      adminUserId: ctx.from.id,
+      action: 'maintenance_toggle',
+      detail: `enabled=${enabled}`,
+    });
+
+    return ctx.reply(enabled ? '✅ Maintenance ON' : '✅ Maintenance OFF');
   });
 
   bot.on('text', async (ctx, next) => {

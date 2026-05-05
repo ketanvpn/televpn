@@ -8,11 +8,39 @@ const { pollPendingQrisPayments } = require('../services/qrisService');
 const { startBackupScheduler } = require('../services/backupService');
 const { startDailyReportScheduler } = require('../services/dailyReportService');
 const { sendAlert } = require('../services/alertService');
+const { getSetting } = require('../repositories/settingsRepository');
+const { getUserById } = require('../repositories/userRepository');
+const { getEffectiveRole, canAccessAdmin } = require('../services/roleService');
 
 function createBot({ db }) {
   const bot = new Telegraf(config.botToken);
 
   bot.use(callbackRateLimit());
+
+  bot.use(async (ctx, next) => {
+    const maintenanceFlag = await getSetting(db, 'maintenance_enabled');
+    const isMaintenance = String(maintenanceFlag || 'false').toLowerCase() === 'true';
+    if (!isMaintenance) return next();
+
+    const userId = Number(ctx.from?.id || 0);
+    if (!userId) return next();
+
+    const userRow = await getUserById(db, userId);
+    const role = getEffectiveRole(userId, userRow ? userRow.role : 'member');
+    if (canAccessAdmin(role)) return next();
+
+    if (ctx.callbackQuery) {
+      try {
+        await ctx.answerCbQuery('Bot sedang maintenance. Coba lagi nanti.', { show_alert: true });
+      } catch (_) {}
+      return null;
+    }
+
+    try {
+      await ctx.reply('⚠️ Bot sedang maintenance. Silakan coba lagi beberapa saat.');
+    } catch (_) {}
+    return null;
+  });
 
   bot.use(async (ctx, next) => {
     try {
