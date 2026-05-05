@@ -5619,7 +5619,7 @@ async function handleServiceAction(ctx, action) {
 async function sendAdminMenu(ctx) {
   // === SUSUN TEKS INFO LISENSI (HANYA UNTUK ADMIN) ===
   let headerText = '<b>🔧 MENU ADMIN</b>';
-  if (EXPIRE_DATE && ADMIN_IDS.includes(ctx.from.id)) {
+  if (EXPIRE_DATE && isAdmin(ctx.from?.id, ADMIN_IDS)) {
     const info = getLicenseInfo();
     if (info) {
       const expireText = info.expire.toLocaleDateString('id-ID', {
@@ -5729,7 +5729,7 @@ bot.action('admin_trial_menu', async (ctx) => {
   try {
     await ctx.answerCbQuery().catch(() => {});
 
-    if (!ADMIN_IDS.includes(ctx.from.id)) {
+    if (!isAdmin(ctx.from?.id, ADMIN_IDS)) {
       return ctx.reply('❌ *Menu ini khusus admin.*', { parse_mode: 'Markdown' });
     }
 
@@ -5758,7 +5758,7 @@ bot.action('admin_trial_toggle', async (ctx) => {
   try {
     await ctx.answerCbQuery().catch(() => {});
 
-    if (!ADMIN_IDS.includes(ctx.from.id)) {
+    if (!isAdmin(ctx.from?.id, ADMIN_IDS)) {
       return ctx.reply('❌ *Menu ini khusus admin.*', { parse_mode: 'Markdown' });
     }
 
@@ -5776,7 +5776,7 @@ bot.action('admin_trial_max_inc', async (ctx) => {
   try {
     await ctx.answerCbQuery().catch(() => {});
 
-    if (!ADMIN_IDS.includes(ctx.from.id)) {
+    if (!isAdmin(ctx.from?.id, ADMIN_IDS)) {
       return ctx.reply('❌ *Menu ini khusus admin.*', { parse_mode: 'Markdown' });
     }
 
@@ -5800,7 +5800,7 @@ bot.action('admin_trial_max_dec', async (ctx) => {
   try {
     await ctx.answerCbQuery().catch(() => {});
 
-    if (!ADMIN_IDS.includes(ctx.from.id)) {
+    if (!isAdmin(ctx.from?.id, ADMIN_IDS)) {
       return ctx.reply('❌ *Menu ini khusus admin.*', { parse_mode: 'Markdown' });
     }
 
@@ -5823,7 +5823,7 @@ bot.action('admin_trial_min_inc', async (ctx) => {
   try {
     await ctx.answerCbQuery().catch(() => {});
 
-    if (!ADMIN_IDS.includes(ctx.from.id)) {
+    if (!isAdmin(ctx.from?.id, ADMIN_IDS)) {
       return ctx.reply('❌ *Menu ini khusus admin.*', { parse_mode: 'Markdown' });
     }
 
@@ -5850,7 +5850,7 @@ bot.action('admin_trial_min_dec', async (ctx) => {
   try {
     await ctx.answerCbQuery().catch(() => {});
 
-    if (!ADMIN_IDS.includes(ctx.from.id)) {
+    if (!isAdmin(ctx.from?.id, ADMIN_IDS)) {
       return ctx.reply('❌ *Menu ini khusus admin.*', { parse_mode: 'Markdown' });
     }
 
@@ -5879,7 +5879,7 @@ bot.action('admin_trial_dur_inc', async (ctx) => {
   try {
     await ctx.answerCbQuery().catch(() => {});
 
-    if (!ADMIN_IDS.includes(ctx.from.id)) {
+    if (!isAdmin(ctx.from?.id, ADMIN_IDS)) {
       return ctx.reply('❌ *Menu ini khusus admin.*', { parse_mode: 'Markdown' });
     }
 
@@ -5903,7 +5903,7 @@ bot.action('admin_trial_dur_dec', async (ctx) => {
   try {
     await ctx.answerCbQuery().catch(() => {});
 
-    if (!ADMIN_IDS.includes(ctx.from.id)) {
+    if (!isAdmin(ctx.from?.id, ADMIN_IDS)) {
       return ctx.reply('❌ *Menu ini khusus admin.*', { parse_mode: 'Markdown' });
     }
 
@@ -5935,7 +5935,7 @@ bot.action('admin_trial_save', async (ctx) => {
   try {
     await ctx.answerCbQuery().catch(() => {});
 
-    if (!ADMIN_IDS.includes(ctx.from.id)) {
+    if (!isAdmin(ctx.from?.id, ADMIN_IDS)) {
       return ctx.reply('❌ *Menu ini khusus admin.*', { parse_mode: 'Markdown' });
     }
 

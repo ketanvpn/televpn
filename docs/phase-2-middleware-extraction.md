@@ -20,6 +20,7 @@ Selesai:
 - Replace checks `/hapuslog`, `/botstatus`, `/helpadmin`, `/addserver_reseller`, dan `/broadcast` dengan access helpers
 - Replace checks `/broadcastres`, `/broadcastmem`, skip-admin broadcast member, dan `/cekqris` dengan access helpers
 - Replace checks command server management dengan access helpers
+- Replace checks admin menu license header dan admin trial actions dengan access helpers
 - Wiring di `app.js` tetap berada di posisi lama
 - Syntax check `app.js`, `callbackRateLimit.js`, `transactionLock.js`, `privateChat.js`, `license.js`, dan `access.js` bersih
 
@@ -50,6 +51,7 @@ Selesai:
 - Permission check command admin utility dan broadcast awal sekarang memakai `isAdmin()`
 - Permission check command broadcast lanjutan dan cek QRIS sekarang memakai access helpers
 - Permission check command server management sekarang memakai `isAdmin()`
+- Permission check admin trial menu/action sekarang memakai `isAdmin()`
 
 ## Validasi
 
