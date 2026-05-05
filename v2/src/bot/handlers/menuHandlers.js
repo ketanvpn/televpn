@@ -39,6 +39,18 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function msgSuccess(title, body = '') {
+  return `✅ <b>${title}</b>${body ? `\n${body}` : ''}`;
+}
+
+function msgError(title, body = '') {
+  return `❌ <b>${title}</b>${body ? `\n${body}` : ''}`;
+}
+
+function msgInfo(title, body = '') {
+  return `ℹ️ <b>${title}</b>${body ? `\n${body}` : ''}`;
+}
+
 async function getAdminStats(db) {
   const startOfDay = new Date();
   startOfDay.setHours(0, 0, 0, 0);
@@ -101,14 +113,14 @@ function registerMenuHandlers(bot, db) {
   bot.action('menu:help', async (ctx) => {
     await ctx.answerCbQuery();
     const text = [
-      '<b>Bantuan</b>',
+      '<b>Pusat Bantuan</b>',
       '',
-      '1) Topup QRIS: masuk ke menu Topup lalu kirim nominal.',
+      '1) Topup QRIS: buka menu Topup lalu kirim nominal.',
       '2) Cek status invoice: <code>/cekqris &lt;invoice_id&gt;</code>.',
       '3) Admin bisa konfirmasi manual fallback via <code>/payok &lt;invoice_id&gt;</code>.',
       '4) Cek profil: /me, cek saldo: /saldo.',
       '',
-      'Gunakan /menu untuk kembali ke dashboard utama.',
+      'Tip: gunakan /menu kapan saja untuk kembali ke dashboard.',
     ].join('\n');
     return ctx.reply(text, {
       parse_mode: 'HTML',
@@ -119,7 +131,7 @@ function registerMenuHandlers(bot, db) {
   bot.action('menu:saldo', async (ctx) => {
     await ctx.answerCbQuery();
     const row = await getUserById(db, ctx.from.id);
-    if (!row) return ctx.reply('User tidak ditemukan.');
+    if (!row) return ctx.reply(msgError('User tidak ditemukan.'), { parse_mode: 'HTML' });
     return ctx.reply(`Saldo kamu: <b>${formatRupiah(row.saldo)}</b>`, {
       parse_mode: 'HTML',
       reply_markup: { inline_keyboard: [[{ text: 'Kembali', callback_data: 'menu:home' }]] },
@@ -235,7 +247,7 @@ function registerMenuHandlers(bot, db) {
     const row = await getUserById(db, ctx.from.id);
     const role = getEffectiveRole(ctx.from.id, row ? row.role : 'member');
     if (!canAccessReseller(role)) {
-      return ctx.reply('Kamu belum punya akses reseller.');
+      return ctx.reply(msgError('Akses reseller belum tersedia untuk akun ini.'), { parse_mode: 'HTML' });
     }
 
     const pending = await listPendingQrisPaymentsByUser(db, ctx.from.id);
@@ -259,7 +271,7 @@ function registerMenuHandlers(bot, db) {
     const row = await getUserById(db, ctx.from.id);
     const role = getEffectiveRole(ctx.from.id, row ? row.role : 'member');
     if (!canAccessAdmin(role)) {
-      return ctx.reply('Menu ini hanya untuk admin.');
+      return ctx.reply(msgError('Menu ini hanya untuk admin.'), { parse_mode: 'HTML' });
     }
 
     const stats = await getAdminStats(db);
@@ -383,41 +395,39 @@ function registerMenuHandlers(bot, db) {
   bot.command('setrole', async (ctx) => {
     const row = await getUserById(db, ctx.from.id);
     const actorRole = getEffectiveRole(ctx.from.id, row ? row.role : 'member');
-    if (!canAccessAdmin(actorRole)) {
-      return ctx.reply('Tidak punya akses.');
-    }
+    if (!canAccessAdmin(actorRole)) return ctx.reply(msgError('Tidak punya akses.'), { parse_mode: 'HTML' });
 
     const parts = String(ctx.message.text || '').trim().split(/\s+/);
     if (parts.length !== 3) {
-      return ctx.reply('Format: /setrole [user_id] [member|reseller]');
+      return ctx.reply(msgInfo('Format command', '<code>/setrole [user_id] [member|reseller]</code>'), { parse_mode: 'HTML' });
     }
 
     const targetId = Number(parts[1]);
     const role = String(parts[2] || '').toLowerCase();
     if (!targetId || !['member', 'reseller'].includes(role)) {
-      return ctx.reply('Parameter tidak valid.');
+      return ctx.reply(msgError('Parameter tidak valid.'));
     }
 
     const res = await setUserRole(db, targetId, role);
-    if (!res.changes) return ctx.reply('User target tidak ditemukan.');
+    if (!res.changes) return ctx.reply(msgError('User target tidak ditemukan.'), { parse_mode: 'HTML' });
     await logAdminAction(db, {
       adminUserId: ctx.from.id,
       action: 'setrole',
       targetUserId: targetId,
       detail: `role=${role}`,
     });
-    return ctx.reply(`Role user ${targetId} diubah menjadi ${role}.`);
+    return ctx.reply(msgSuccess('Role berhasil diubah', `User <code>${targetId}</code> sekarang <b>${role}</b>.`), { parse_mode: 'HTML' });
   });
 
   bot.command('addserver', async (ctx) => {
     const row = await getUserById(db, ctx.from.id);
     const actorRole = getEffectiveRole(ctx.from.id, row ? row.role : 'member');
-    if (!canAccessAdmin(actorRole)) return ctx.reply('Tidak punya akses.');
+    if (!canAccessAdmin(actorRole)) return ctx.reply(msgError('Tidak punya akses.'), { parse_mode: 'HTML' });
 
     const raw = String(ctx.message.text || '').replace(/^\/addserver\s*/i, '').trim();
     const parts = raw.split('|').map((x) => x.trim());
     if (parts.length < 5) {
-      return ctx.reply('Format: /addserver [name]|[domain]|[auth]|[price]|[reseller_only 0/1]');
+      return ctx.reply(msgInfo('Format command', '<code>/addserver [name]|[domain]|[auth]|[price]|[reseller_only 0/1]</code>'), { parse_mode: 'HTML' });
     }
 
     const [name, domain, authToken, priceRaw, resellerOnlyRaw] = parts;
@@ -430,12 +440,12 @@ function registerMenuHandlers(bot, db) {
       targetRef: `server:${res.lastID}`,
       detail: `name=${name};domain=${domain};price=${price};reseller_only=${isResellerOnly ? 1 : 0}`,
     });
-    return ctx.reply(`Server ditambahkan. ID: ${res.lastID}`);
+    return ctx.reply(msgSuccess('Server berhasil ditambahkan', `ID server: <code>${res.lastID}</code>`), { parse_mode: 'HTML' });
   });
 
   bot.command('servers', async (ctx) => {
     const list = await listActiveServers(db);
-    if (!list.length) return ctx.reply('Belum ada server aktif.');
+    if (!list.length) return ctx.reply(msgInfo('Belum ada server aktif.'), { parse_mode: 'HTML' });
     const lines = ['Daftar Server:'];
     list.forEach((s) => {
       lines.push(`#${s.id} | ${s.name} | ${s.domain || '-'} | harga ${formatRupiah(s.price)} | reseller_only=${s.is_reseller_only}`);
@@ -448,14 +458,14 @@ function registerMenuHandlers(bot, db) {
     const password = `pw${Math.floor(Math.random() * 900000 + 100000)}`;
 
     const user = await getUserById(db, ctx.from.id);
-    if (!user) return ctx.reply('User tidak ditemukan. /start dulu.');
+    if (!user) return ctx.reply(msgError('User tidak ditemukan. Jalankan /start dulu.'), { parse_mode: 'HTML' });
 
     const role = getEffectiveRole(ctx.from.id, user.role);
     const server = await listActiveServers(db).then((x) => x.find((s) => Number(s.id) === Number(serverId)));
-    if (!server) return ctx.reply('Server tidak ditemukan.');
+    if (!server) return ctx.reply(msgError('Server tidak ditemukan.'), { parse_mode: 'HTML' });
 
     if (server.is_reseller_only && !canAccessReseller(role)) {
-      return ctx.reply('Server ini khusus reseller/admin.');
+      return ctx.reply(msgError('Server ini khusus reseller/admin.'), { parse_mode: 'HTML' });
     }
 
     const price = Number(server.price || 0);
@@ -469,7 +479,7 @@ function registerMenuHandlers(bot, db) {
         note: `Create ${type} ${username}`,
       });
       if (!debit.applied) {
-        return ctx.reply(`Saldo tidak cukup. Harga: ${formatRupiah(price)}`);
+        return ctx.reply(msgError('Saldo tidak cukup', `Harga akun: <b>${formatRupiah(price)}</b>`), { parse_mode: 'HTML' });
       }
     }
 
@@ -489,7 +499,7 @@ function registerMenuHandlers(bot, db) {
 
       return ctx.reply(
         [
-          `<b>Account Created</b>`,
+          `✅ <b>Account Created</b>`,
           `Type: <b>${String(type).toUpperCase()}</b>`,
           `Username: <code>${provider.username || username}</code>`,
           `Server: ${result.server.name}`,
@@ -498,7 +508,7 @@ function registerMenuHandlers(bot, db) {
         { parse_mode: 'HTML' }
       );
     } catch (err) {
-      return ctx.reply(`Gagal create: ${err.message}`);
+      return ctx.reply(msgError('Gagal create akun', `<code>${String(err.message || err)}</code>`), { parse_mode: 'HTML' });
     }
   }
 
@@ -519,7 +529,7 @@ function registerMenuHandlers(bot, db) {
 
       return ctx.reply(
         [
-          `<b>Trial Created</b>`,
+          `✅ <b>Trial Created</b>`,
           `Type: <b>${String(type).toUpperCase()}</b>`,
           `Username: <code>${provider.username || '-'}</code>`,
           `Server: ${result.server.name}`,
@@ -527,7 +537,7 @@ function registerMenuHandlers(bot, db) {
         { parse_mode: 'HTML' }
       );
     } catch (err) {
-      return ctx.reply(`Gagal trial: ${err.message}`);
+      return ctx.reply(msgError('Gagal membuat trial', `<code>${String(err.message || err)}</code>`), { parse_mode: 'HTML' });
     }
   }
 
@@ -541,9 +551,9 @@ function registerMenuHandlers(bot, db) {
         const nextExp = base + Number(days) * 24 * 60 * 60 * 1000;
         await updateAccountExpiry(db, acc.id, nextExp);
       }
-      return ctx.reply(`Renew sukses untuk ${username} di server ${result.server.name}.`);
+      return ctx.reply(msgSuccess('Renew berhasil', `Akun <code>${username}</code> di server <b>${result.server.name}</b> berhasil diperpanjang.`), { parse_mode: 'HTML' });
     } catch (err) {
-      return ctx.reply(`Gagal renew: ${err.message}`);
+      return ctx.reply(msgError('Gagal renew akun', `<code>${String(err.message || err)}</code>`), { parse_mode: 'HTML' });
     }
   }
 
@@ -553,9 +563,9 @@ function registerMenuHandlers(bot, db) {
       await deleteAccountOnProvider(db, { type, username, serverId });
       const acc = await getLatestAccountByUserTypeUsername(db, { userId: ctx.from.id, type, username });
       if (acc) await markAccountDeleted(db, acc.id);
-      return ctx.reply(`Akun ${username} berhasil dihapus.`);
+      return ctx.reply(msgSuccess('Delete berhasil', `Akun <code>${username}</code> berhasil dihapus.`), { parse_mode: 'HTML' });
     } catch (err) {
-      return ctx.reply(`Gagal delete: ${err.message}`);
+      return ctx.reply(msgError('Gagal delete akun', `<code>${String(err.message || err)}</code>`), { parse_mode: 'HTML' });
     }
   }
 

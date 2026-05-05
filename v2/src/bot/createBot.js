@@ -21,7 +21,7 @@ function createBot({ db }) {
       logger.error(`Bot handler error: ${err.message}`);
       sendAlert(bot, { scope: 'bot-handler', message: err.message }).catch(() => null);
       try {
-        await ctx.reply('Internal error. Please try again.');
+        await ctx.reply('❌ Terjadi gangguan sementara. Silakan coba lagi beberapa saat.');
       } catch (_) {}
       return null;
     }
