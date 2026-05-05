@@ -29,6 +29,13 @@ async function listPendingQrisPaymentsByUser(db, userId) {
   );
 }
 
+async function listAllPendingQrisPayments(db, limit = 100) {
+  return db.all(
+    `SELECT * FROM qris_payments WHERE status = 'pending' ORDER BY created_at ASC LIMIT ?`,
+    [Number(limit || 100)]
+  );
+}
+
 async function markQrisPaid(db, payload) {
   const { invoiceId, providerRef = null, paidAt, matchedAt } = payload;
   return db.run(
@@ -50,6 +57,7 @@ module.exports = {
   createQrisPayment,
   getQrisPaymentByInvoiceId,
   listPendingQrisPaymentsByUser,
+  listAllPendingQrisPayments,
   markQrisPaid,
   markQrisExpired,
 };

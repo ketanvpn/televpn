@@ -37,8 +37,9 @@ This is a clean, modular scaffold for a Telegram VPN sales bot.
 - `/saldo`: current balance
 - `/setrole <user_id> <member|reseller>`: admin only
 - `/payok <invoice_id>`: admin settlement simulation
+- `/cekqris <invoice_id>`: check and refresh QRIS status
 
 ## Notes for next integration
 
-- QRIS provider endpoint integration can be attached in `src/services/qrisService.js`.
+- QRIS live endpoint is ready via `GOPAY_API_KEY` and `GOPAY_API_BASE_URL` in `.env`.
 - Provisioning API integration (create/trial/renew/delete account) should be added as separate modules under `src/services`.

@@ -1,6 +1,6 @@
 const { getUserById, setUserRole } = require('../../repositories/userRepository');
 const { listPendingQrisPaymentsByUser } = require('../../repositories/qrisPaymentRepository');
-const { createTopupInvoice, finalizeInvoiceAsPaid } = require('../../services/qrisService');
+const { createTopupInvoice, finalizeInvoiceAsPaid, checkInvoiceStatus } = require('../../services/qrisService');
 const { getEffectiveRole, canAccessAdmin, canAccessReseller } = require('../../services/roleService');
 const { buildMainMenuText, buildMainKeyboard, formatRupiah } = require('../ui/mainMenu');
 
@@ -60,8 +60,9 @@ function registerMenuHandlers(bot, db) {
       '<b>Bantuan</b>',
       '',
       '1) Topup QRIS: masuk ke menu Topup lalu kirim nominal.',
-      '2) Admin bisa konfirmasi invoice via /payok <invoice_id>.',
-      '3) Cek profil: /me, cek saldo: /saldo.',
+      '2) Cek status invoice: <code>/cekqris &lt;invoice_id&gt;</code>.',
+      '3) Admin bisa konfirmasi manual fallback via <code>/payok &lt;invoice_id&gt;</code>.',
+      '4) Cek profil: /me, cek saldo: /saldo.',
       '',
       'Gunakan /menu untuk kembali ke dashboard utama.',
     ].join('\n');
@@ -143,8 +144,9 @@ function registerMenuHandlers(bot, db) {
       '<b>Panel Admin</b>',
       '',
       'Command penting:',
-      '• /setrole <user_id> <member|reseller>',
-      '• /payok <invoice_id> (simulasi settlement)',
+      '• <code>/setrole &lt;user_id&gt; &lt;member|reseller&gt;</code>',
+      '• <code>/payok &lt;invoice_id&gt;</code> (simulasi settlement)',
+      '• <code>/cekqris &lt;invoice_id&gt;</code> (cek status invoice)',
       '• /menu kembali ke menu utama',
     ].join('\n');
 
@@ -163,7 +165,7 @@ function registerMenuHandlers(bot, db) {
 
     const parts = String(ctx.message.text || '').trim().split(/\s+/);
     if (parts.length !== 3) {
-      return ctx.reply('Format: /setrole <user_id> <member|reseller>');
+      return ctx.reply('Format: /setrole [user_id] [member|reseller]');
     }
 
     const targetId = Number(parts[1]);
@@ -186,7 +188,7 @@ function registerMenuHandlers(bot, db) {
 
     const parts = String(ctx.message.text || '').trim().split(/\s+/);
     if (parts.length < 2) {
-      return ctx.reply('Format: /payok <invoice_id>');
+      return ctx.reply('Format: /payok [invoice_id]');
     }
 
     const invoiceId = parts[1];
@@ -211,6 +213,35 @@ function registerMenuHandlers(bot, db) {
     } catch (_) {}
 
     return ctx.reply(`Invoice ${invoiceId} berhasil di-set PAID.`);
+  });
+
+  bot.command('cekqris', async (ctx) => {
+    const parts = String(ctx.message.text || '').trim().split(/\s+/);
+    if (parts.length < 2) return ctx.reply('Format: /cekqris [invoice_id]');
+
+    const invoiceId = parts[1];
+    const row = await getUserById(db, ctx.from.id);
+    const role = getEffectiveRole(ctx.from.id, row ? row.role : 'member');
+    const result = await checkInvoiceStatus(db, invoiceId);
+
+    if (!result.ok) return ctx.reply(`Invoice tidak ditemukan: ${invoiceId}`);
+
+    if (role === 'member' || role === 'reseller') {
+      if (Number(result.row.user_id) !== Number(ctx.from.id)) {
+        return ctx.reply('Kamu tidak punya akses untuk invoice ini.');
+      }
+    }
+
+    return ctx.reply(
+      [
+        `<b>Status QRIS</b>`,
+        `Invoice: <code>${invoiceId}</code>`,
+        `Status: <b>${String(result.status || '-').toUpperCase()}</b>`,
+        `Nominal: <b>${formatRupiah(result.row.amount)}</b>`,
+        `Transfer: <b>${formatRupiah(result.row.total_amount)}</b>`,
+      ].join('\n'),
+      { parse_mode: 'HTML' }
+    );
   });
 
   bot.on('text', async (ctx, next) => {
@@ -242,9 +273,10 @@ function registerMenuHandlers(bot, db) {
         `Nominal: <b>${formatRupiah(invoice.amount)}</b>`,
         `Kode unik: <b>${invoice.uniqueCode}</b>`,
         `Transfer: <b>${formatRupiah(invoice.totalAmount)}</b>`,
+        `Provider Ref: <code>${invoice.providerRef || '-'}</code>`,
         `Expired: <b>${new Date(invoice.expiresAt).toLocaleString('id-ID')}</b>`,
         '',
-        'Catatan: Integrasi provider QRIS live tinggal sambungkan endpoint generate/status di tahap berikutnya.',
+        'Cek status pembayaran: /cekqris ' + invoice.invoiceId,
       ].join('\n'),
       {
         parse_mode: 'HTML',
