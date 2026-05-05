@@ -43,9 +43,12 @@ This is a clean, modular scaffold for a Telegram VPN sales bot.
 
 - `/start` or `/menu`: open dashboard
 - `/status`: check bot status (normal/maintenance)
+- `/changelog`: show latest v2 changes and next parity items
 - `/me`: profile + role
 - `/saldo`: current balance
 - `/setrole <user_id> <member|reseller>`: admin only
+- `/addsaldo <user_id> <amount>`: add user balance with ledger (admin)
+- `/minsaldo <user_id> <amount>`: subtract user balance with ledger (admin)
 - `/payok <invoice_id>`: admin settlement simulation
 - `/cekqris <invoice_id>`: check and refresh QRIS status
 - `/addserver <name>|<domain>|<auth>|<price>|<reseller_only 0/1>`: add provisioning server (admin)
@@ -80,6 +83,7 @@ Admin quick buttons in `Panel Admin`:
 
 - QRIS live endpoint is ready via `GOPAY_API_KEY` and `GOPAY_API_BASE_URL` in `.env`.
 - Provisioning API integration (create/trial/renew/delete account) should be added as separate modules under `src/services`.
+- Legacy parity checklist is tracked in `docs/legacy-parity.md`.
 
 ## Backup scheduler env
 

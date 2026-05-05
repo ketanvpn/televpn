@@ -305,6 +305,8 @@ function registerMenuHandlers(bot, db) {
       '• <code>/adminlogs</code> lihat audit action admin',
       '• <code>/maintenance on|off</code> toggle mode maintenance',
       '• <code>/maintmsg show|reset|set ...</code> atur pesan maintenance',
+      '• <code>/addsaldo &lt;user_id&gt; &lt;amount&gt;</code>',
+      '• <code>/minsaldo &lt;user_id&gt; &lt;amount&gt;</code>',
       '• /menu kembali ke menu utama',
     ].join('\n');
 
@@ -420,6 +422,92 @@ function registerMenuHandlers(bot, db) {
       detail: `role=${role}`,
     });
     return ctx.reply(msgSuccess('Role berhasil diubah', `User <code>${targetId}</code> sekarang <b>${role}</b>.`), { parse_mode: 'HTML' });
+  });
+
+  bot.command('addsaldo', async (ctx) => {
+    const row = await getUserById(db, ctx.from.id);
+    const actorRole = getEffectiveRole(ctx.from.id, row ? row.role : 'member');
+    if (!canAccessAdmin(actorRole)) return ctx.reply(msgError('Tidak punya akses.'), { parse_mode: 'HTML' });
+
+    const parts = String(ctx.message.text || '').trim().split(/\s+/);
+    if (parts.length < 3) {
+      return ctx.reply(msgInfo('Format command', '<code>/addsaldo [user_id] [amount]</code>'), { parse_mode: 'HTML' });
+    }
+
+    const targetId = Number(parts[1] || 0);
+    const amount = Number(parts[2] || 0);
+    if (!targetId || !Number.isFinite(amount) || amount <= 0) {
+      return ctx.reply(msgError('Parameter tidak valid.'), { parse_mode: 'HTML' });
+    }
+
+    const target = await getUserById(db, targetId);
+    if (!target) return ctx.reply(msgError('User target tidak ditemukan.'), { parse_mode: 'HTML' });
+
+    const result = await adjustSaldoWithLedger(db, {
+      userId: targetId,
+      amount,
+      type: 'manual_addsaldo',
+      referenceId: `manual_add_${targetId}_${ctx.from.id}_${Date.now()}`,
+      note: `Manual add saldo by ${ctx.from.id}`,
+    });
+
+    await logAdminAction(db, {
+      adminUserId: ctx.from.id,
+      action: 'addsaldo',
+      targetUserId: targetId,
+      detail: `amount=${amount}`,
+    });
+
+    try {
+      await ctx.telegram.sendMessage(targetId, `Saldo kamu bertambah ${formatRupiah(amount)}. Saldo sekarang: ${formatRupiah(result.saldo)}.`);
+    } catch (_) {}
+
+    return ctx.reply(msgSuccess('Saldo berhasil ditambahkan', `User <code>${targetId}</code> +${formatRupiah(amount)}\nSaldo sekarang: <b>${formatRupiah(result.saldo)}</b>`), { parse_mode: 'HTML' });
+  });
+
+  bot.command('minsaldo', async (ctx) => {
+    const row = await getUserById(db, ctx.from.id);
+    const actorRole = getEffectiveRole(ctx.from.id, row ? row.role : 'member');
+    if (!canAccessAdmin(actorRole)) return ctx.reply(msgError('Tidak punya akses.'), { parse_mode: 'HTML' });
+
+    const parts = String(ctx.message.text || '').trim().split(/\s+/);
+    if (parts.length < 3) {
+      return ctx.reply(msgInfo('Format command', '<code>/minsaldo [user_id] [amount]</code>'), { parse_mode: 'HTML' });
+    }
+
+    const targetId = Number(parts[1] || 0);
+    const amount = Number(parts[2] || 0);
+    if (!targetId || !Number.isFinite(amount) || amount <= 0) {
+      return ctx.reply(msgError('Parameter tidak valid.'), { parse_mode: 'HTML' });
+    }
+
+    const target = await getUserById(db, targetId);
+    if (!target) return ctx.reply(msgError('User target tidak ditemukan.'), { parse_mode: 'HTML' });
+
+    const result = await adjustSaldoWithLedger(db, {
+      userId: targetId,
+      amount: -amount,
+      type: 'manual_minsaldo',
+      referenceId: `manual_min_${targetId}_${ctx.from.id}_${Date.now()}`,
+      note: `Manual min saldo by ${ctx.from.id}`,
+    });
+
+    if (!result.applied) {
+      return ctx.reply(msgError('Gagal mengurangi saldo', result.reason === 'insufficient_balance' ? 'Saldo user tidak cukup.' : result.reason), { parse_mode: 'HTML' });
+    }
+
+    await logAdminAction(db, {
+      adminUserId: ctx.from.id,
+      action: 'minsaldo',
+      targetUserId: targetId,
+      detail: `amount=${amount}`,
+    });
+
+    try {
+      await ctx.telegram.sendMessage(targetId, `Saldo kamu dikurangi ${formatRupiah(amount)}. Saldo sekarang: ${formatRupiah(result.saldo)}.`);
+    } catch (_) {}
+
+    return ctx.reply(msgSuccess('Saldo berhasil dikurangi', `User <code>${targetId}</code> -${formatRupiah(amount)}\nSaldo sekarang: <b>${formatRupiah(result.saldo)}</b>`), { parse_mode: 'HTML' });
   });
 
   bot.command('addserver', async (ctx) => {
@@ -910,6 +998,31 @@ function registerMenuHandlers(bot, db) {
       '• Menu utama: /menu',
       '• Cek saldo: /saldo',
       '• Topup: /menu → Topup QRIS',
+    ].join('\n');
+
+    return ctx.reply(text, { parse_mode: 'HTML' });
+  });
+
+  bot.command('changelog', async (ctx) => {
+    const text = [
+      '<b>Changelog BOTVPN v2</b>',
+      '',
+      '<b>Versi staging saat ini</b>',
+      '• QRIS live + polling status',
+      '• Create/trial/renew/delete akun VPN',
+      '• Lock/unlock akun VPN',
+      '• Broadcast all/reseller/member',
+      '• Admin dashboard, audit log, backup, daily report',
+      '• Maintenance mode + custom message',
+      '• Quick action menu untuk operasional cepat',
+      '',
+      '<b>Next parity dari bot lama</b>',
+      '• Manual add/min saldo',
+      '• Manajemen reseller',
+      '• Trial config admin',
+      '• Expiry reminder akun',
+      '',
+      'Gunakan /status untuk cek status bot.',
     ].join('\n');
 
     return ctx.reply(text, { parse_mode: 'HTML' });
