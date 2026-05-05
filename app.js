@@ -77,6 +77,7 @@ const {
   startCallbackRateLimitCleanup,
   callbackRateLimitMiddleware,
 } = require('./src/bot/middleware/callbackRateLimit');
+const { transactionLockMiddleware } = require('./src/bot/middleware/transactionLock');
 
 const trialFile = TRIAL_DB_PATH;
 const trialConfigFile = TRIAL_CONFIG_PATH;
@@ -1908,43 +1909,7 @@ async function renderConfirm(ctx) {
 // Pengaman transaksi penting (create / trial / renew / topup)
 // Mencegah dobel proses walau callback terkirim ulang
 // =====================================================
-const txLock = new Map(); // userId -> { action, until }
-
-function isTxAction(data = '') {
-  return (
-    data.startsWith('create_') ||   // create_ssh/vmess/vless/trojan...
-    data.startsWith('renew_')  ||   // renew_ssh/vmess/vless/trojan...
-    data.startsWith('trial_')  ||   // trial_ssh/vmess/vless/trojan...
-    data === 'topup_manual'    ||   // topup manual QRIS
-    data === 'topup_saldo'          // kalau suatu saat kamu hidupkan lagi
-  );
-}
-
-bot.on('callback_query', async (ctx, next) => {
-  const userId = ctx.from?.id;
-  const data = ctx.callbackQuery?.data || '';
-  if (!userId || !isTxAction(data)) return next();
-
-  const now = Date.now();
-  const lock = txLock.get(userId);
-
-  // kalau masih dalam lock window, hentikan proses
-  if (lock && now < lock.until) {
-    await ctx.answerCbQuery(`⏳ Sedang diproses (${lock.action})`, { show_alert: false });
-    return;
-  }
-
-  // set lock 25 detik (cukup untuk create/renew/trial/topup)
-  txLock.set(userId, { action: data, until: now + 25 * 1000 });
-
-  try {
-    await next();
-  } finally {
-    // lepas lock setelah handler selesai (normalnya cepat)
-    // tapi kalau handler async lama, lock tetap aman karena ada auto-timeout
-    txLock.delete(userId);
-  }
-});
+bot.on('callback_query', transactionLockMiddleware());
 
 let ADMIN_USERNAME = '';
 const pendingGopayApiKeyInput = new Map();
