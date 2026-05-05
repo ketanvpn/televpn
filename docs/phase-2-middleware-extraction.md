@@ -11,8 +11,9 @@ Selesai:
 - Extract transaction/action lock middleware ke `src/bot/middleware/transactionLock.js`
 - Extract private chat guard ke `src/bot/guards/privateChat.js`
 - Extract license info getter dan license guard ke `src/bot/guards/license.js`
+- Extract access messages dan parser admin IDs ke `src/bot/guards/access.js`
 - Wiring di `app.js` tetap berada di posisi lama
-- Syntax check `app.js`, `callbackRateLimit.js`, `transactionLock.js`, `privateChat.js`, dan `license.js` bersih
+- Syntax check `app.js`, `callbackRateLimit.js`, `transactionLock.js`, `privateChat.js`, `license.js`, dan `access.js` bersih
 
 ## File Baru
 
@@ -20,6 +21,7 @@ Selesai:
 - `src/bot/middleware/transactionLock.js`
 - `src/bot/guards/privateChat.js`
 - `src/bot/guards/license.js`
+- `src/bot/guards/access.js`
 
 ## Perubahan di app.js
 
@@ -31,6 +33,7 @@ Selesai:
 - `ensurePrivateChat()` tidak lagi inline di `app.js`
 - `getLicenseInfo()` sekarang dibuat lewat `createLicenseInfoGetter(() => EXPIRE_DATE)`
 - Middleware kunci lisensi sekarang memakai `licenseGuardMiddleware({ getLicenseInfo, masterId: MASTER_ID })`
+- `NO_ACCESS_MESSAGE`, `MASTER_ONLY_MESSAGE`, dan parsing `ADMIN_IDS_RAW` sekarang berasal dari access guard helper
 
 ## Validasi
 
@@ -42,11 +45,12 @@ node --check src/bot/middleware/callbackRateLimit.js
 node --check src/bot/middleware/transactionLock.js
 node --check src/bot/guards/privateChat.js
 node --check src/bot/guards/license.js
+node --check src/bot/guards/access.js
 ```
 
 Hasil: tidak ada error syntax.
 
 ## Next Step Aman
 
-1. Extract permission/access helpers.
+1. Gradual replace permission checks dengan helper `isAdmin`, `isMaster`, `isAdminOrMaster` bila aman.
 2. Extract command handler groups kecil per domain.

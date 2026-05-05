@@ -83,6 +83,11 @@ const {
   createLicenseInfoGetter,
   licenseGuardMiddleware,
 } = require('./src/bot/guards/license');
+const {
+  NO_ACCESS_MESSAGE,
+  MASTER_ONLY_MESSAGE,
+  parseAdminIds,
+} = require('./src/bot/guards/access');
 
 const trialFile = TRIAL_DB_PATH;
 const trialConfigFile = TRIAL_CONFIG_PATH;
@@ -1943,12 +1948,7 @@ function hasPendingGopayApiKeyInput(userId) {
 }
 
 // Ubah ADMIN_IDS_RAW jadi array angka
-const adminIds = Array.isArray(ADMIN_IDS_RAW)
-  ? ADMIN_IDS_RAW.map((id) => Number(id))
-  : String(ADMIN_IDS_RAW)
-      .split(',')
-      .map((s) => Number(s.trim()))
-      .filter((n) => !Number.isNaN(n));
+const adminIds = parseAdminIds(ADMIN_IDS_RAW);
 
 // Alias lama supaya kode yang pakai ADMIN_IDS masih jalan
 const ADMIN_IDS = adminIds;
@@ -2919,11 +2919,6 @@ const adminTrialTemp = {}; // key: adminId, value: config trial sementara
 
 const userState = {};
 logger.info('User state initialized');
-// Pesan standar untuk akses ditolak
-const NO_ACCESS_MESSAGE = '🚫 Kamu tidak punya akses untuk perintah ini.';
-// Pesan standar untuk perintah khusus pemilik bot (MASTER)
-const MASTER_ONLY_MESSAGE =
-  '⚠️ <b>Perintah ini hanya bisa digunakan oleh pemilik bot (MASTER).</b>';
 
 bot.command(['start', 'menu'], async (ctx) => {
 	// Wajib di private chat
