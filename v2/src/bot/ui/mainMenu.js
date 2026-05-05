@@ -25,9 +25,18 @@ function buildMainKeyboard(role) {
       { text: 'Akun Saya', callback_data: 'menu:accounts' },
     ],
     [
+      { text: 'Quick Create', callback_data: 'quick:create' },
+      { text: 'Quick Trial', callback_data: 'quick:trial' },
+    ],
+    [
+      { text: 'Quick Renew', callback_data: 'quick:renew' },
+      { text: 'Quick Delete', callback_data: 'quick:delete' },
+    ],
+    [
       { text: 'Topup QRIS', callback_data: 'menu:topup' },
       { text: 'Saldo', callback_data: 'menu:saldo' },
     ],
+    [{ text: 'Quick Actions', callback_data: 'menu:quick' }],
     [{ text: 'Bantuan', callback_data: 'menu:help' }],
   ];
 

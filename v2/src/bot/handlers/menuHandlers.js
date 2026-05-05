@@ -23,6 +23,16 @@ function getState(userId) {
   return stateByUser.get(userId) || null;
 }
 
+function quickFlowKeyboard() {
+  return {
+    inline_keyboard: [[{ text: 'Batal', callback_data: 'quick:cancel' }]],
+  };
+}
+
+function isSupportedType(type) {
+  return ['ssh', 'vmess', 'vless', 'trojan'].includes(String(type || '').toLowerCase());
+}
+
 async function renderMainMenu(ctx, db) {
   const row = await getUserById(db, ctx.from.id);
   if (!row) {
@@ -100,6 +110,64 @@ function registerMenuHandlers(bot, db) {
         'Ketik <code>batal</code> untuk membatalkan.',
       ].join('\n'),
       { parse_mode: 'HTML' }
+    );
+  });
+
+  bot.action('quick:cancel', async (ctx) => {
+    await ctx.answerCbQuery('Dibatalkan');
+    clearState(ctx.from.id);
+    return renderMainMenu(ctx, db);
+  });
+
+  bot.action('quick:create', async (ctx) => {
+    await ctx.answerCbQuery();
+    setState(ctx.from.id, { step: 'quick_create_input' });
+    return ctx.reply(
+      [
+        '<b>Quick Create</b>',
+        'Format: <code>type username days server_id</code>',
+        'Contoh: <code>vmess userbaru 30 1</code>',
+      ].join('\n'),
+      { parse_mode: 'HTML', reply_markup: quickFlowKeyboard() }
+    );
+  });
+
+  bot.action('quick:trial', async (ctx) => {
+    await ctx.answerCbQuery();
+    setState(ctx.from.id, { step: 'quick_trial_input' });
+    return ctx.reply(
+      [
+        '<b>Quick Trial</b>',
+        'Format: <code>type server_id</code>',
+        'Contoh: <code>ssh 1</code>',
+      ].join('\n'),
+      { parse_mode: 'HTML', reply_markup: quickFlowKeyboard() }
+    );
+  });
+
+  bot.action('quick:renew', async (ctx) => {
+    await ctx.answerCbQuery();
+    setState(ctx.from.id, { step: 'quick_renew_input' });
+    return ctx.reply(
+      [
+        '<b>Quick Renew</b>',
+        'Format: <code>type username days server_id</code>',
+        'Contoh: <code>vmess userbaru 30 1</code>',
+      ].join('\n'),
+      { parse_mode: 'HTML', reply_markup: quickFlowKeyboard() }
+    );
+  });
+
+  bot.action('quick:delete', async (ctx) => {
+    await ctx.answerCbQuery();
+    setState(ctx.from.id, { step: 'quick_delete_input' });
+    return ctx.reply(
+      [
+        '<b>Quick Delete</b>',
+        'Format: <code>type username server_id</code>',
+        'Contoh: <code>vmess userbaru 1</code>',
+      ].join('\n'),
+      { parse_mode: 'HTML', reply_markup: quickFlowKeyboard() }
     );
   });
 
@@ -238,23 +306,15 @@ function registerMenuHandlers(bot, db) {
     return ctx.reply(lines.join('\n'));
   });
 
-  bot.command('create', async (ctx) => {
-    const parts = String(ctx.message.text || '').trim().split(/\s+/);
-    if (parts.length < 5) {
-      return ctx.reply('Format: /create [type] [username] [days] [server_id]');
-    }
-
-    const type = String(parts[1] || '').toLowerCase();
-    const username = parts[2];
-    const days = Number(parts[3] || 0);
-    const serverId = Number(parts[4] || 0);
+  async function executeCreate(ctx, payload) {
+    const { type, username, days, serverId } = payload;
     const password = `pw${Math.floor(Math.random() * 900000 + 100000)}`;
 
     const user = await getUserById(db, ctx.from.id);
     if (!user) return ctx.reply('User tidak ditemukan. /start dulu.');
 
     const role = getEffectiveRole(ctx.from.id, user.role);
-    const server = await listActiveServers(db).then((x) => x.find((s) => Number(s.id) === serverId));
+    const server = await listActiveServers(db).then((x) => x.find((s) => Number(s.id) === Number(serverId)));
     if (!server) return ctx.reply('Server tidak ditemukan.');
 
     if (server.is_reseller_only && !canAccessReseller(role)) {
@@ -279,7 +339,7 @@ function registerMenuHandlers(bot, db) {
     try {
       const result = await createPaidAccount(db, { type, username, password, days, serverId, quota: 0, limitip: 0 });
       const provider = result.provider || {};
-      const expMs = Date.now() + days * 24 * 60 * 60 * 1000;
+      const expMs = Date.now() + Number(days) * 24 * 60 * 60 * 1000;
       await createAccountRecord(db, {
         userId: ctx.from.id,
         username: provider.username || username,
@@ -293,7 +353,7 @@ function registerMenuHandlers(bot, db) {
       return ctx.reply(
         [
           `<b>Account Created</b>`,
-          `Type: <b>${type.toUpperCase()}</b>`,
+          `Type: <b>${String(type).toUpperCase()}</b>`,
           `Username: <code>${provider.username || username}</code>`,
           `Server: ${result.server.name}`,
           `Expired: ${provider.expired || provider.exp || '-'} ${provider.time || ''}`,
@@ -303,15 +363,10 @@ function registerMenuHandlers(bot, db) {
     } catch (err) {
       return ctx.reply(`Gagal create: ${err.message}`);
     }
-  });
+  }
 
-  bot.command('trial', async (ctx) => {
-    const parts = String(ctx.message.text || '').trim().split(/\s+/);
-    if (parts.length < 3) return ctx.reply('Format: /trial [type] [server_id]');
-
-    const type = String(parts[1] || '').toLowerCase();
-    const serverId = Number(parts[2] || 0);
-
+  async function executeTrial(ctx, payload) {
+    const { type, serverId } = payload;
     try {
       const result = await createTrialAccount(db, { type, serverId });
       const provider = result.provider || {};
@@ -328,7 +383,7 @@ function registerMenuHandlers(bot, db) {
       return ctx.reply(
         [
           `<b>Trial Created</b>`,
-          `Type: <b>${type.toUpperCase()}</b>`,
+          `Type: <b>${String(type).toUpperCase()}</b>`,
           `Username: <code>${provider.username || '-'}</code>`,
           `Server: ${result.server.name}`,
         ].join('\n'),
@@ -337,6 +392,57 @@ function registerMenuHandlers(bot, db) {
     } catch (err) {
       return ctx.reply(`Gagal trial: ${err.message}`);
     }
+  }
+
+  async function executeRenew(ctx, payload) {
+    const { type, username, days, serverId } = payload;
+    try {
+      const result = await renewAccount(db, { type, username, days, serverId, quota: 0 });
+      const acc = await getLatestAccountByUserTypeUsername(db, { userId: ctx.from.id, type, username });
+      if (acc) {
+        const base = Number(acc.expires_at || Date.now());
+        const nextExp = base + Number(days) * 24 * 60 * 60 * 1000;
+        await updateAccountExpiry(db, acc.id, nextExp);
+      }
+      return ctx.reply(`Renew sukses untuk ${username} di server ${result.server.name}.`);
+    } catch (err) {
+      return ctx.reply(`Gagal renew: ${err.message}`);
+    }
+  }
+
+  async function executeDelete(ctx, payload) {
+    const { type, username, serverId } = payload;
+    try {
+      await deleteAccountOnProvider(db, { type, username, serverId });
+      const acc = await getLatestAccountByUserTypeUsername(db, { userId: ctx.from.id, type, username });
+      if (acc) await markAccountDeleted(db, acc.id);
+      return ctx.reply(`Akun ${username} berhasil dihapus.`);
+    } catch (err) {
+      return ctx.reply(`Gagal delete: ${err.message}`);
+    }
+  }
+
+  bot.command('create', async (ctx) => {
+    const parts = String(ctx.message.text || '').trim().split(/\s+/);
+    if (parts.length < 5) {
+      return ctx.reply('Format: /create [type] [username] [days] [server_id]');
+    }
+
+    const type = String(parts[1] || '').toLowerCase();
+    const username = parts[2];
+    const days = Number(parts[3] || 0);
+    const serverId = Number(parts[4] || 0);
+    return executeCreate(ctx, { type, username, days, serverId });
+  });
+
+  bot.command('trial', async (ctx) => {
+    const parts = String(ctx.message.text || '').trim().split(/\s+/);
+    if (parts.length < 3) return ctx.reply('Format: /trial [type] [server_id]');
+
+    const type = String(parts[1] || '').toLowerCase();
+    const serverId = Number(parts[2] || 0);
+
+    return executeTrial(ctx, { type, serverId });
   });
 
   bot.command('renew', async (ctx) => {
@@ -348,18 +454,7 @@ function registerMenuHandlers(bot, db) {
     const days = Number(parts[3] || 0);
     const serverId = Number(parts[4] || 0);
 
-    try {
-      const result = await renewAccount(db, { type, username, days, serverId, quota: 0 });
-      const acc = await getLatestAccountByUserTypeUsername(db, { userId: ctx.from.id, type, username });
-      if (acc) {
-        const base = Number(acc.expires_at || Date.now());
-        const nextExp = base + days * 24 * 60 * 60 * 1000;
-        await updateAccountExpiry(db, acc.id, nextExp);
-      }
-      return ctx.reply(`Renew sukses untuk ${username} di server ${result.server.name}.`);
-    } catch (err) {
-      return ctx.reply(`Gagal renew: ${err.message}`);
-    }
+    return executeRenew(ctx, { type, username, days, serverId });
   });
 
   bot.command('delete', async (ctx) => {
@@ -370,14 +465,7 @@ function registerMenuHandlers(bot, db) {
     const username = parts[2];
     const serverId = Number(parts[3] || 0);
 
-    try {
-      await deleteAccountOnProvider(db, { type, username, serverId });
-      const acc = await getLatestAccountByUserTypeUsername(db, { userId: ctx.from.id, type, username });
-      if (acc) await markAccountDeleted(db, acc.id);
-      return ctx.reply(`Akun ${username} berhasil dihapus.`);
-    } catch (err) {
-      return ctx.reply(`Gagal delete: ${err.message}`);
-    }
+    return executeDelete(ctx, { type, username, serverId });
   });
 
   bot.command('backupnow', async (ctx) => {
@@ -464,6 +552,77 @@ function registerMenuHandlers(bot, db) {
       clearState(ctx.from.id);
       await ctx.reply('Input topup dibatalkan.');
       return renderMainMenu(ctx, db);
+    }
+
+    if (current.step === 'quick_create_input') {
+      const parts = String(ctx.message.text || '').trim().split(/\s+/);
+      if (parts.length < 4) {
+        return ctx.reply('Format salah. Contoh: vmess userbaru 30 1', { reply_markup: quickFlowKeyboard() });
+      }
+
+      const [typeRaw, username, daysRaw, serverRaw] = parts;
+      const type = String(typeRaw || '').toLowerCase();
+      const days = Number(daysRaw || 0);
+      const serverId = Number(serverRaw || 0);
+
+      if (!isSupportedType(type) || !username || days <= 0 || !serverId) {
+        return ctx.reply('Parameter tidak valid. Type: ssh/vmess/vless/trojan.', { reply_markup: quickFlowKeyboard() });
+      }
+
+      clearState(ctx.from.id);
+      return executeCreate(ctx, { type, username, days, serverId });
+    }
+
+    if (current.step === 'quick_trial_input') {
+      const parts = String(ctx.message.text || '').trim().split(/\s+/);
+      if (parts.length < 2) {
+        return ctx.reply('Format salah. Contoh: ssh 1', { reply_markup: quickFlowKeyboard() });
+      }
+
+      const [typeRaw, serverRaw] = parts;
+      const type = String(typeRaw || '').toLowerCase();
+      const serverId = Number(serverRaw || 0);
+      if (!isSupportedType(type) || !serverId) {
+        return ctx.reply('Parameter tidak valid. Type: ssh/vmess/vless/trojan.', { reply_markup: quickFlowKeyboard() });
+      }
+
+      clearState(ctx.from.id);
+      return executeTrial(ctx, { type, serverId });
+    }
+
+    if (current.step === 'quick_renew_input') {
+      const parts = String(ctx.message.text || '').trim().split(/\s+/);
+      if (parts.length < 4) {
+        return ctx.reply('Format salah. Contoh: vmess userbaru 30 1', { reply_markup: quickFlowKeyboard() });
+      }
+
+      const [typeRaw, username, daysRaw, serverRaw] = parts;
+      const type = String(typeRaw || '').toLowerCase();
+      const days = Number(daysRaw || 0);
+      const serverId = Number(serverRaw || 0);
+      if (!isSupportedType(type) || !username || days <= 0 || !serverId) {
+        return ctx.reply('Parameter tidak valid. Type: ssh/vmess/vless/trojan.', { reply_markup: quickFlowKeyboard() });
+      }
+
+      clearState(ctx.from.id);
+      return executeRenew(ctx, { type, username, days, serverId });
+    }
+
+    if (current.step === 'quick_delete_input') {
+      const parts = String(ctx.message.text || '').trim().split(/\s+/);
+      if (parts.length < 3) {
+        return ctx.reply('Format salah. Contoh: vmess userbaru 1', { reply_markup: quickFlowKeyboard() });
+      }
+
+      const [typeRaw, username, serverRaw] = parts;
+      const type = String(typeRaw || '').toLowerCase();
+      const serverId = Number(serverRaw || 0);
+      if (!isSupportedType(type) || !username || !serverId) {
+        return ctx.reply('Parameter tidak valid. Type: ssh/vmess/vless/trojan.', { reply_markup: quickFlowKeyboard() });
+      }
+
+      clearState(ctx.from.id);
+      return executeDelete(ctx, { type, username, serverId });
     }
 
     if (current.step !== 'await_topup_amount') return next();

@@ -55,6 +55,12 @@ This is a clean, modular scaffold for a Telegram VPN sales bot.
 - `/delete <type> <username> <server_id>`: delete account
 - `/backupnow`: send DB backup now (admin)
 
+Quick action buttons are available in `/menu`:
+- `Quick Create`
+- `Quick Trial`
+- `Quick Renew`
+- `Quick Delete`
+
 ## Notes for next integration
 
 - QRIS live endpoint is ready via `GOPAY_API_KEY` and `GOPAY_API_BASE_URL` in `.env`.
