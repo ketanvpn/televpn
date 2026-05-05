@@ -56,6 +56,7 @@ This is a clean, modular scaffold for a Telegram VPN sales bot.
 - `/backupnow`: send DB backup now (admin)
 - `/adminstats`: quick admin dashboard stats
 - `/adminlogs`: show recent admin audit trail
+- `/dailyreportnow`: send daily report immediately (admin)
 
 Quick action buttons are available in `/menu`:
 - `Quick Create`
@@ -73,3 +74,10 @@ Quick action buttons are available in `/menu`:
 - `AUTO_BACKUP_ENABLED=true|false`
 - `AUTO_BACKUP_INTERVAL_MIN=360`
 - `BACKUP_CHAT_ID=<telegram_chat_id>`
+
+## Alert & report env
+
+- `ALERT_CHAT_ID=<telegram_chat_id_for_alerts>`
+- `DAILY_REPORT_ENABLED=true|false`
+- `DAILY_REPORT_HOUR=23`
+- `DAILY_REPORT_MINUTE=0`

@@ -6,6 +6,8 @@ const { registerBasicCommands } = require('./handlers/basicCommands');
 const { registerMenuHandlers } = require('./handlers/menuHandlers');
 const { pollPendingQrisPayments } = require('../services/qrisService');
 const { startBackupScheduler } = require('../services/backupService');
+const { startDailyReportScheduler } = require('../services/dailyReportService');
+const { sendAlert } = require('../services/alertService');
 
 function createBot({ db }) {
   const bot = new Telegraf(config.botToken);
@@ -17,6 +19,7 @@ function createBot({ db }) {
       return await next();
     } catch (err) {
       logger.error(`Bot handler error: ${err.message}`);
+      sendAlert(bot, { scope: 'bot-handler', message: err.message }).catch(() => null);
       try {
         await ctx.reply('Internal error. Please try again.');
       } catch (_) {}
@@ -36,6 +39,19 @@ function createBot({ db }) {
   }, Math.max(3000, Number(config.qrisPollIntervalMs || 7000)));
 
   startBackupScheduler(bot);
+  startDailyReportScheduler(bot, db);
+
+  process.on('unhandledRejection', (reason) => {
+    const msg = reason && reason.message ? reason.message : String(reason);
+    logger.error(`UnhandledRejection: ${msg}`);
+    sendAlert(bot, { scope: 'unhandledRejection', message: msg, dedupeMs: 60000 }).catch(() => null);
+  });
+
+  process.on('uncaughtException', (err) => {
+    const msg = err && err.message ? err.message : String(err);
+    logger.error(`UncaughtException: ${msg}`);
+    sendAlert(bot, { scope: 'uncaughtException', message: msg, dedupeMs: 60000 }).catch(() => null);
+  });
 
   return bot;
 }

@@ -17,6 +17,10 @@ const config = {
   autoBackupEnabled: String(process.env.AUTO_BACKUP_ENABLED || 'true').toLowerCase() === 'true',
   autoBackupIntervalMin: Number(process.env.AUTO_BACKUP_INTERVAL_MIN || 360),
   backupChatId: Number(process.env.BACKUP_CHAT_ID || process.env.MASTER_ID || 0),
+  alertChatId: Number(process.env.ALERT_CHAT_ID || process.env.BACKUP_CHAT_ID || process.env.MASTER_ID || 0),
+  dailyReportEnabled: String(process.env.DAILY_REPORT_ENABLED || 'true').toLowerCase() === 'true',
+  dailyReportHour: Number(process.env.DAILY_REPORT_HOUR || 23),
+  dailyReportMinute: Number(process.env.DAILY_REPORT_MINUTE || 0),
 };
 
 if (!config.botToken) {

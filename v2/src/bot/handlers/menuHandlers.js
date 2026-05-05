@@ -8,6 +8,7 @@ const { getEffectiveRole, canAccessAdmin, canAccessReseller } = require('../../s
 const { createPaidAccount, createTrialAccount, renewAccount, deleteAccountOnProvider } = require('../../services/provisioningService');
 const { adjustSaldoWithLedger } = require('../../services/walletService');
 const { sendBackupNow } = require('../../services/backupService');
+const { sendDailyReport } = require('../../services/dailyReportService');
 const { buildMainMenuText, buildMainKeyboard, formatRupiah } = require('../ui/mainMenu');
 
 const stateByUser = new Map();
@@ -278,6 +279,7 @@ function registerMenuHandlers(bot, db) {
       '• <code>/payok &lt;invoice_id&gt;</code> (simulasi settlement)',
       '• <code>/cekqris &lt;invoice_id&gt;</code> (cek status invoice)',
       '• <code>/backupnow</code> kirim backup database sekarang',
+      '• <code>/dailyreportnow</code> kirim laporan harian sekarang',
       '• <code>/adminlogs</code> lihat audit action admin',
       '• /menu kembali ke menu utama',
     ].join('\n');
@@ -549,6 +551,20 @@ function registerMenuHandlers(bot, db) {
       detail: 'manual backup triggered',
     });
     return ctx.reply('Backup selesai dikirim (cek chat backup).');
+  });
+
+  bot.command('dailyreportnow', async (ctx) => {
+    const row = await getUserById(db, ctx.from.id);
+    const actorRole = getEffectiveRole(ctx.from.id, row ? row.role : 'member');
+    if (!canAccessAdmin(actorRole)) return ctx.reply('Tidak punya akses.');
+
+    await sendDailyReport(bot, db, 'manual');
+    await logAdminAction(db, {
+      adminUserId: ctx.from.id,
+      action: 'dailyreportnow',
+      detail: 'manual daily report triggered',
+    });
+    return ctx.reply('Laporan harian terkirim.');
   });
 
   bot.command('payok', async (ctx) => {
