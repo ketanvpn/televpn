@@ -73,6 +73,10 @@ const varsStore = require('./src/core/varsStore');
 const { msgSuccess, msgError, msgInfo } = require('./src/bot/ui/messages');
 const { toast, toastError } = require('./src/bot/ui/toast');
 const { sendCleanMenu } = require('./src/bot/ui/cleanMenu');
+const {
+  startCallbackRateLimitCleanup,
+  callbackRateLimitMiddleware,
+} = require('./src/bot/middleware/callbackRateLimit');
 
 const trialFile = TRIAL_DB_PATH;
 const trialConfigFile = TRIAL_CONFIG_PATH;
@@ -1536,53 +1540,9 @@ bot.telegram.editMessageText = (chatId, messageId, inlineMessageId, text, extra 
 // =====================================================
 // Anti double-click / anti spam tombol inline
 // =====================================================
-const cbRateLimit = new Map();     // userId -> last timestamp
-const cbSameDataLock = new Map();  // `${userId}:${data}` -> last timestamp
-
-// Bersihkan cache biar tidak numpuk di memori
-setInterval(() => {
-  const now = Date.now();
-  for (const [k, ts] of cbRateLimit) {
-    if (now - ts > 5 * 60 * 1000) cbRateLimit.delete(k); // >5 menit
-  }
-  for (const [k, ts] of cbSameDataLock) {
-    if (now - ts > 5 * 60 * 1000) cbSameDataLock.delete(k);
-  }
-}, 5 * 60 * 1000);
-
-// Middleware callback_query (jalan untuk semua tombol inline)
-bot.on('callback_query', async (ctx, next) => {
-  try {
-    const userId = ctx.from?.id;
-    const data = ctx.callbackQuery?.data || '';
-    const now = Date.now();
-
-    if (!userId) return next();
-
-    // Rate limit umum: cegah spam klik terlalu cepat
-    const lastAny = cbRateLimit.get(userId) || 0;
-    if (now - lastAny < 700) {
-      await ctx.answerCbQuery('Pelan-pelan ya…');
-      return;
-    }
-    cbRateLimit.set(userId, now);
-
-    // Lock tombol yang sama: cegah klik tombol yang sama berulang
-    const key = `${userId}:${data}`;
-    const lastSame = cbSameDataLock.get(key) || 0;
-    if (now - lastSame < 1500) {
-      await ctx.answerCbQuery('Sedang diproses…');
-      return;
-    }
-    cbSameDataLock.set(key, now);
-
-    return next();
-  } catch (e) {
-    // kalau answerCbQuery gagal, jangan bikin bot crash
-    try { await ctx.answerCbQuery(); } catch (_) {}
-    return next();
-  }
-});// =====================================================
+startCallbackRateLimitCleanup();
+bot.on('callback_query', callbackRateLimitMiddleware());
+// =====================================================
 // Helper menu bersih (edit/replace + hapus menu lama)
 // =====================================================
 async function showErrorOnMenu(ctx, htmlText) {
