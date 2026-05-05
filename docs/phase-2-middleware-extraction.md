@@ -17,6 +17,7 @@ Selesai:
 - Replace checks `/addhari`, `/kuranghari`, dan awal `/addsaldo` dengan access helpers
 - Replace checks `/minsaldo`, `/deluser`, dan `/listuser` dengan access helpers
 - Replace checks `/setflag`, `/lastbroadcast`, dan `/admin` dengan access helpers
+- Replace checks `/hapuslog`, `/botstatus`, `/helpadmin`, `/addserver_reseller`, dan `/broadcast` dengan access helpers
 - Wiring di `app.js` tetap berada di posisi lama
 - Syntax check `app.js`, `callbackRateLimit.js`, `transactionLock.js`, `privateChat.js`, `license.js`, dan `access.js` bersih
 
@@ -44,6 +45,7 @@ Selesai:
 - Permission check command lisensi master-only dan awal saldo admin sekarang memakai access helpers
 - Permission check command saldo/user admin lanjutan sekarang memakai `isAdmin()`
 - Permission check command user/admin menu sekarang memakai `isAdmin()` dan `isAdminOrMaster()`
+- Permission check command admin utility dan broadcast awal sekarang memakai `isAdmin()`
 
 ## Validasi
 

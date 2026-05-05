@@ -4241,7 +4241,7 @@ ${commandPanelText}
 bot.command('hapuslog', async (ctx) => {
 	// Wajib di private chat
   if (!ensurePrivateChat(ctx)) return;
-  if (!adminIds.includes(ctx.from.id)) return ctx.reply('Tidak ada izin!');
+  if (!isAdmin(ctx.from?.id, adminIds)) return ctx.reply('Tidak ada izin!');
   try {
     if (fs.existsSync('bot-combined.log')) fs.unlinkSync('bot-combined.log');
     if (fs.existsSync('bot-error.log')) fs.unlinkSync('bot-error.log');
@@ -4260,7 +4260,7 @@ bot.command(['botstatus', 'statusbot'], async (ctx) => {
   if (!ensurePrivateChat(ctx)) return;
 
   const adminId = ctx.from?.id;
-  if (!adminId || !ADMIN_IDS.includes(adminId)) {
+  if (!isAdmin(adminId, ADMIN_IDS)) {
     return ctx.reply(NO_ACCESS_MESSAGE, { parse_mode: 'HTML' });
   }
 
@@ -4360,7 +4360,7 @@ bot.command('helpadmin', async (ctx) => {
   const userId = ctx.message.from.id;
 
   // Hanya admin / owner
-  if (!ADMIN_IDS.includes(userId)) {
+  if (!isAdmin(userId, ADMIN_IDS)) {
   return ctx.reply(NO_ACCESS_MESSAGE, { parse_mode: 'HTML' });
 }
 
@@ -4434,7 +4434,7 @@ bot.command('helpadmin', async (ctx) => {
 bot.command('addserver_reseller', async (ctx) => {
   if (!ensurePrivateChat(ctx)) return;
   const userId = ctx.from?.id;
-  if (!ADMIN_IDS.includes(userId)) {
+  if (!isAdmin(userId, ADMIN_IDS)) {
     return ctx.reply(NO_ACCESS_MESSAGE, { parse_mode: 'HTML' });
   }
   try {
@@ -4469,7 +4469,7 @@ bot.command('broadcast', async (ctx) => {
   const userId = ctx.from.id;
   logger.info(`Broadcast command received from user_id: ${userId}`);
 
-  if (!ADMIN_IDS.includes(userId)) {
+  if (!isAdmin(userId, ADMIN_IDS)) {
     return ctx.reply(NO_ACCESS_MESSAGE, { parse_mode: 'HTML' });
   }
 
