@@ -297,11 +297,69 @@ function registerMenuHandlers(bot, db) {
       parse_mode: 'HTML',
       reply_markup: {
         inline_keyboard: [
+          [
+            { text: 'Quick Lock', callback_data: 'quick:lock' },
+            { text: 'Quick Unlock', callback_data: 'quick:unlock' },
+          ],
+          [
+            { text: 'BC All', callback_data: 'quick:broadcast_all' },
+            { text: 'BC Res', callback_data: 'quick:broadcast_res' },
+            { text: 'BC Mem', callback_data: 'quick:broadcast_mem' },
+          ],
           [{ text: 'Refresh Stats', callback_data: 'menu:admin' }],
           [{ text: 'Kembali', callback_data: 'menu:home' }],
         ],
       },
     });
+  });
+
+  bot.action('quick:lock', async (ctx) => {
+    await ctx.answerCbQuery();
+    const row = await getUserById(db, ctx.from.id);
+    const actorRole = getEffectiveRole(ctx.from.id, row ? row.role : 'member');
+    if (!canAccessAdmin(actorRole)) return ctx.reply('Tidak punya akses.');
+    setState(ctx.from.id, { step: 'quick_lock_input' });
+    return ctx.reply('Quick Lock\nFormat: type username server_id\nContoh: vmess userbaru 1', {
+      reply_markup: quickFlowKeyboard(),
+    });
+  });
+
+  bot.action('quick:unlock', async (ctx) => {
+    await ctx.answerCbQuery();
+    const row = await getUserById(db, ctx.from.id);
+    const actorRole = getEffectiveRole(ctx.from.id, row ? row.role : 'member');
+    if (!canAccessAdmin(actorRole)) return ctx.reply('Tidak punya akses.');
+    setState(ctx.from.id, { step: 'quick_unlock_input' });
+    return ctx.reply('Quick Unlock\nFormat: type username server_id\nContoh: vmess userbaru 1', {
+      reply_markup: quickFlowKeyboard(),
+    });
+  });
+
+  bot.action('quick:broadcast_all', async (ctx) => {
+    await ctx.answerCbQuery();
+    const row = await getUserById(db, ctx.from.id);
+    const actorRole = getEffectiveRole(ctx.from.id, row ? row.role : 'member');
+    if (!canAccessAdmin(actorRole)) return ctx.reply('Tidak punya akses.');
+    setState(ctx.from.id, { step: 'quick_broadcast_input', mode: 'all' });
+    return ctx.reply('Kirim pesan broadcast untuk semua user.', { reply_markup: quickFlowKeyboard() });
+  });
+
+  bot.action('quick:broadcast_res', async (ctx) => {
+    await ctx.answerCbQuery();
+    const row = await getUserById(db, ctx.from.id);
+    const actorRole = getEffectiveRole(ctx.from.id, row ? row.role : 'member');
+    if (!canAccessAdmin(actorRole)) return ctx.reply('Tidak punya akses.');
+    setState(ctx.from.id, { step: 'quick_broadcast_input', mode: 'reseller' });
+    return ctx.reply('Kirim pesan broadcast untuk reseller.', { reply_markup: quickFlowKeyboard() });
+  });
+
+  bot.action('quick:broadcast_mem', async (ctx) => {
+    await ctx.answerCbQuery();
+    const row = await getUserById(db, ctx.from.id);
+    const actorRole = getEffectiveRole(ctx.from.id, row ? row.role : 'member');
+    if (!canAccessAdmin(actorRole)) return ctx.reply('Tidak punya akses.');
+    setState(ctx.from.id, { step: 'quick_broadcast_input', mode: 'member' });
+    return ctx.reply('Kirim pesan broadcast untuk member.', { reply_markup: quickFlowKeyboard() });
   });
 
   bot.command('adminstats', async (ctx) => {
@@ -585,6 +643,10 @@ function registerMenuHandlers(bot, db) {
     if (!canAccessAdmin(actorRole)) return ctx.reply('Tidak punya akses.');
 
     const message = String(ctx.message.text || '').replace(/^\/\w+\s*/i, '').trim();
+    return doBroadcastMessage(ctx, mode, message);
+  }
+
+  async function doBroadcastMessage(ctx, mode, message) {
     if (!message) return ctx.reply('Pesan kosong. Contoh: /broadcastall Promo malam ini');
 
     let targets = [];
@@ -822,6 +884,55 @@ function registerMenuHandlers(bot, db) {
 
       clearState(ctx.from.id);
       return executeDelete(ctx, { type, username, serverId });
+    }
+
+    if (current.step === 'quick_lock_input') {
+      const parts = String(ctx.message.text || '').trim().split(/\s+/);
+      if (parts.length < 3) {
+        return ctx.reply('Format salah. Contoh: vmess userbaru 1', { reply_markup: quickFlowKeyboard() });
+      }
+      const [typeRaw, username, serverRaw] = parts;
+      const type = String(typeRaw || '').toLowerCase();
+      const serverId = Number(serverRaw || 0);
+      if (!isSupportedType(type) || !username || !serverId) {
+        return ctx.reply('Parameter tidak valid. Type: ssh/vmess/vless/trojan.', { reply_markup: quickFlowKeyboard() });
+      }
+      clearState(ctx.from.id);
+      try {
+        await lockAccountOnProvider(db, { type, username, serverId });
+        await updateLatestAccountStatus(db, { userId: ctx.from.id, type, username, status: 'locked' });
+        return ctx.reply(`Akun ${username} berhasil dikunci.`);
+      } catch (err) {
+        return ctx.reply(`Gagal lock: ${err.message}`);
+      }
+    }
+
+    if (current.step === 'quick_unlock_input') {
+      const parts = String(ctx.message.text || '').trim().split(/\s+/);
+      if (parts.length < 3) {
+        return ctx.reply('Format salah. Contoh: vmess userbaru 1', { reply_markup: quickFlowKeyboard() });
+      }
+      const [typeRaw, username, serverRaw] = parts;
+      const type = String(typeRaw || '').toLowerCase();
+      const serverId = Number(serverRaw || 0);
+      if (!isSupportedType(type) || !username || !serverId) {
+        return ctx.reply('Parameter tidak valid. Type: ssh/vmess/vless/trojan.', { reply_markup: quickFlowKeyboard() });
+      }
+      clearState(ctx.from.id);
+      try {
+        await unlockAccountOnProvider(db, { type, username, serverId });
+        await updateLatestAccountStatus(db, { userId: ctx.from.id, type, username, status: 'active' });
+        return ctx.reply(`Akun ${username} berhasil dibuka.`);
+      } catch (err) {
+        return ctx.reply(`Gagal unlock: ${err.message}`);
+      }
+    }
+
+    if (current.step === 'quick_broadcast_input') {
+      const mode = current.mode || 'all';
+      const message = String(ctx.message.text || '').trim();
+      clearState(ctx.from.id);
+      return doBroadcastMessage(ctx, mode, message);
     }
 
     if (current.step !== 'await_topup_amount') return next();

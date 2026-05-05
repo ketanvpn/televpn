@@ -69,6 +69,10 @@ Quick action buttons are available in `/menu`:
 - `Quick Renew`
 - `Quick Delete`
 
+Admin quick buttons in `Panel Admin`:
+- `Quick Lock`, `Quick Unlock`
+- `BC All`, `BC Res`, `BC Mem`
+
 ## Notes for next integration
 
 - QRIS live endpoint is ready via `GOPAY_API_KEY` and `GOPAY_API_BASE_URL` in `.env`.
