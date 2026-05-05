@@ -15,6 +15,7 @@ Selesai:
 - Replace admin checks area GoPay API key dengan `isAdmin()` helper
 - Replace checks `/testgroup`, `/daily_report_test`, `/backup_auto_test`, `/lisensi`, `/health` dengan access helpers
 - Replace checks `/addhari`, `/kuranghari`, dan awal `/addsaldo` dengan access helpers
+- Replace checks `/minsaldo`, `/deluser`, dan `/listuser` dengan access helpers
 - Wiring di `app.js` tetap berada di posisi lama
 - Syntax check `app.js`, `callbackRateLimit.js`, `transactionLock.js`, `privateChat.js`, `license.js`, dan `access.js` bersih
 
@@ -40,6 +41,7 @@ Selesai:
 - Permission check GoPay API key sekarang memakai `isAdmin(ctx.from?.id, ADMIN_IDS)`
 - Permission check beberapa command admin/master awal sekarang memakai `isAdmin()` dan `isMaster()`
 - Permission check command lisensi master-only dan awal saldo admin sekarang memakai access helpers
+- Permission check command saldo/user admin lanjutan sekarang memakai `isAdmin()`
 
 ## Validasi
 

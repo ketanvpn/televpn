@@ -3698,7 +3698,7 @@ bot.command('minsaldo', async (ctx) => {
 	// Wajib di private chat
   if (!ensurePrivateChat(ctx)) return;
   // Hanya admin yang boleh pakai
-  if (!ctx.from || !ADMIN_IDS.includes(ctx.from.id)) {
+  if (!isAdmin(ctx.from?.id, ADMIN_IDS)) {
     return ctx.reply(NO_ACCESS_MESSAGE, { parse_mode: 'HTML' });
 }
 
@@ -3850,7 +3850,7 @@ bot.command('deluser', async (ctx) => {
 	// Wajib di private chat
   if (!ensurePrivateChat(ctx)) return;
   // Hanya admin yang boleh pakai (pakai pola yang sama seperti /addsaldo)
-   if (!ctx.from || !ADMIN_IDS.includes(ctx.from.id)) {
+   if (!isAdmin(ctx.from?.id, ADMIN_IDS)) {
     return ctx.reply(NO_ACCESS_MESSAGE, { parse_mode: 'HTML' });
   }
 
@@ -3920,7 +3920,7 @@ bot.command('listuser', async (ctx) => {
 	// Wajib di private chat
   if (!ensurePrivateChat(ctx)) return;
   // Hanya admin yang boleh pakai
-  if (!ctx.from || !ADMIN_IDS.includes(ctx.from.id)) {
+  if (!isAdmin(ctx.from?.id, ADMIN_IDS)) {
     return ctx.reply(NO_ACCESS_MESSAGE, { parse_mode: 'HTML' });
 }
 
