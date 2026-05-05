@@ -69,6 +69,7 @@ const path = require('path');
 const { VARS_PATH, TRIAL_DB_PATH, TRIAL_CONFIG_PATH } = require('./src/core/paths');
 const { rupiah } = require('./src/core/formatters');
 const { mdToHtml } = require('./src/core/telegramSafeHtml');
+const varsStore = require('./src/core/varsStore');
 
 const trialFile = TRIAL_DB_PATH;
 const trialConfigFile = TRIAL_CONFIG_PATH;
@@ -343,32 +344,16 @@ async function saveTrialAccess(userId) {
 // ============================================================================
 
 const fs = require('fs');
-let vars = {};
-try {
-  vars = JSON.parse(fs.readFileSync(VARS_PATH, 'utf8'));
-} catch (e) {
-  logger.error('Gagal membaca .vars.json. Pastikan file ada & format JSON benar:', e.message || e);
-  vars = {};
-}
+let vars = varsStore.loadVars();
 
 function readVarsFresh() {
-  try {
-    const raw = fs.readFileSync(VARS_PATH, 'utf8');
-    const parsed = JSON.parse(raw);
-    vars = parsed;
-    return parsed;
-  } catch (e) {
-    logger.error('Gagal membaca .vars.json terbaru:', e.message || e);
-    return vars || {};
-  }
+  vars = varsStore.readVarsFresh(vars);
+  return vars;
 }
 
 function writeVarsPartial(partial) {
-  const current = readVarsFresh();
-  const updated = { ...current, ...partial };
-  fs.writeFileSync(VARS_PATH, JSON.stringify(updated, null, 2));
-  vars = updated;
-  return updated;
+  vars = varsStore.writeVarsPartial(partial, vars);
+  return vars;
 }
 
 function getGopayApiKey() {
@@ -376,12 +361,7 @@ function getGopayApiKey() {
   return String(fresh.GOPAY_API_KEY || '').trim();
 }
 
-function maskToken(token, head = 12, tail = 8) {
-  const value = String(token || '').trim();
-  if (!value) return '-';
-  if (value.length <= head + tail) return value;
-  return `${value.slice(0, head)}...${value.slice(-tail)}`;
-}
+const { maskToken } = varsStore;
 
 const GOPAY_BASE_QR = vars.GOPAY_BASE_QR || vars.ORDERKUOTA_BASE_QR || '';
 const GOPAY_AUTH_USERNAME = vars.GOPAY_AUTH_USERNAME || vars.ORDERKUOTA_AUTH_USERNAME || '';

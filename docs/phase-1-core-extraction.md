@@ -10,8 +10,9 @@ Selesai:
 - Extract path penting ke `src/core/paths.js`
 - Extract formatter `rupiah` ke `src/core/formatters.js`
 - Extract helper Markdown-to-HTML ke `src/core/telegramSafeHtml.js`
+- Extract `.vars.json` store ke `src/core/varsStore.js`
 - Update `app.js` agar memakai module core baru
-- Syntax check `app.js`, `logger.js`, `paths.js`, `formatters.js`, dan `telegramSafeHtml.js` bersih
+- Syntax check `app.js`, `logger.js`, `paths.js`, `formatters.js`, `telegramSafeHtml.js`, dan `varsStore.js` bersih
 
 ## File Baru
 
@@ -19,6 +20,7 @@ Selesai:
 - `src/core/paths.js`
 - `src/core/formatters.js`
 - `src/core/telegramSafeHtml.js`
+- `src/core/varsStore.js`
 
 ## Perubahan di app.js
 
@@ -26,12 +28,13 @@ Selesai:
 - `VARS_PATH`, `trial.db`, dan `trial_config.json` sekarang memakai konstanta dari `src/core/paths.js`
 - `rupiah` sekarang dipakai dari `src/core/formatters.js`
 - `mdToHtml` sekarang dipakai dari `src/core/telegramSafeHtml.js`
+- Load/read/write `.vars.json` sekarang didelegasikan ke `src/core/varsStore.js`
 
 ## Belum Dipindah
 
 Bagian berikut sengaja belum dipindah karena risikonya lebih tinggi dan perlu tahap terpisah:
 
-- `vars` store dan fungsi `readVarsFresh` / `writeVarsPartial`
+- wrapper lokal `readVarsFresh` / `writeVarsPartial` masih ada untuk menjaga kompatibilitas state `vars`
 - helper tanggal lain yang masih inline di beberapa fitur
 - database wrapper/query
 - middleware Telegram
@@ -46,6 +49,7 @@ node --check src/core/logger.js
 node --check src/core/paths.js
 node --check src/core/formatters.js
 node --check src/core/telegramSafeHtml.js
+node --check src/core/varsStore.js
 ```
 
 Hasil: tidak ada error syntax.
@@ -54,6 +58,6 @@ Hasil: tidak ada error syntax.
 
 Lanjut ekstraksi kecil berikutnya:
 
-1. Extract `vars` config store secara hati-hati.
-2. Extract helper clean menu/middleware Telegram.
-3. Setelah itu baru masuk middleware license/callback lock.
+1. Extract helper clean menu/middleware Telegram.
+2. Extract middleware license/callback lock.
+3. Setelah itu baru masuk repository/query layer kecil.
