@@ -11,6 +11,13 @@ async function migrate() {
     const schemaPath = path.join(__dirname, 'schema.sql');
     const schemaSql = fs.readFileSync(schemaPath, 'utf8');
     await db.exec(schemaSql);
+
+    const columns = await db.all('PRAGMA table_info(servers)');
+    const hasAuth = columns.some((c) => c && c.name === 'auth');
+    if (!hasAuth) {
+      await db.run('ALTER TABLE servers ADD COLUMN auth TEXT');
+    }
+
     logger.info('Migration complete');
   } finally {
     await db.close();

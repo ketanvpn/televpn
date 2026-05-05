@@ -38,6 +38,12 @@ This is a clean, modular scaffold for a Telegram VPN sales bot.
 - `/setrole <user_id> <member|reseller>`: admin only
 - `/payok <invoice_id>`: admin settlement simulation
 - `/cekqris <invoice_id>`: check and refresh QRIS status
+- `/addserver <name>|<domain>|<auth>|<price>|<reseller_only 0/1>`: add provisioning server (admin)
+- `/servers`: list active servers
+- `/create <type> <username> <days> <server_id>`: create paid account
+- `/trial <type> <server_id>`: create trial account (1 hour)
+- `/renew <type> <username> <days> <server_id>`: renew account
+- `/delete <type> <username> <server_id>`: delete account
 
 ## Notes for next integration
 
