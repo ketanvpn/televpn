@@ -5,41 +5,7 @@ const { Telegraf } = require('telegraf');
 const app = express();
 const axios = require('axios');
 const { isUserReseller, addReseller, removeReseller, listResellersSync } = require('./modules/reseller');
-const winston = require('winston');
-
-const logger = winston.createLogger({
-  // Bisa diatur via ENV, default 'info'
-  level: process.env.LOG_LEVEL || 'info',
-  format: winston.format.combine(
-    winston.format.timestamp(),
-    winston.format.printf(({ timestamp, level, message }) => {
-      return `${timestamp} [${level.toUpperCase()}]: ${message}`;
-    })
-  ),
-  transports: [
-    // Log error saja, file kecil tapi penting
-    new winston.transports.File({
-      filename: 'bot-error.log',
-      level: 'error',
-      maxsize: 5 * 1024 * 1024, // 5 MB per file
-      maxFiles: 3,              // simpan 3 file (15MB total)
-    }),
-
-    // Log gabungan, bisa agak lebih besar
-    new winston.transports.File({
-      filename: 'bot-combined.log',
-      maxsize: 10 * 1024 * 1024, // 10 MB per file
-      maxFiles: 5,               // simpan 5 file (50MB total)
-    }),
-  ],
-});
-
-// Di luar production, log ke console untuk debugging
-if (process.env.NODE_ENV !== 'production') {
-  logger.add(new winston.transports.Console({
-    format: winston.format.simple(),
-  }));
-}
+const { logger } = require('./src/core/logger');
 
 
 // Helper sederhana untuk jeda (dipakai di broadcast)
@@ -100,11 +66,10 @@ const {
 
 const fsPromises = require('fs/promises');
 const path = require('path');
+const { VARS_PATH, TRIAL_DB_PATH, TRIAL_CONFIG_PATH } = require('./src/core/paths');
 
-const VARS_PATH = path.join(__dirname, '.vars.json');
-
-const trialFile = path.join(__dirname, 'trial.db');
-const trialConfigFile = path.join(__dirname, 'trial_config.json');
+const trialFile = TRIAL_DB_PATH;
+const trialConfigFile = TRIAL_CONFIG_PATH;
 
 // Konfigurasi default trial
 const DEFAULT_TRIAL_CONFIG = {
@@ -16035,4 +16000,3 @@ startResellerTargetScheduler();
 app.listen(port, () => {
   logger.info(`Server berjalan di port ${port}`);
 });
-
