@@ -260,7 +260,8 @@ function registerMenuHandlers(bot, db) {
     }
 
     const price = Number(server.price || 0);
-    if (price > 0) {
+    const shouldChargeSaldo = role === 'member';
+    if (price > 0 && shouldChargeSaldo) {
       const debit = await adjustSaldoWithLedger(db, {
         userId: ctx.from.id,
         amount: -price,
