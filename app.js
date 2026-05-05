@@ -89,6 +89,7 @@ const {
   parseAdminIds,
   isAdmin,
   isMaster,
+  isAdminOrMaster,
 } = require('./src/bot/guards/access');
 
 const trialFile = TRIAL_DB_PATH;
@@ -3979,7 +3980,7 @@ bot.command('listuser', async (ctx) => {
 bot.command('setflag', async (ctx) => {
   // Wajib di private chat
   if (!ensurePrivateChat(ctx)) return;
-  if (!ctx.from || !ADMIN_IDS.includes(ctx.from.id)) {
+  if (!isAdmin(ctx.from?.id, ADMIN_IDS)) {
     return ctx.reply(NO_ACCESS_MESSAGE, { parse_mode: 'HTML' });
   }
 
@@ -4046,7 +4047,7 @@ bot.command('lastbroadcast', async (ctx) => {
   const userId = ctx.from.id;
 
   // Hanya admin/master yang boleh
-  if (!adminIds.includes(userId) && userId !== MASTER_ID) {
+  if (!isAdminOrMaster(userId, adminIds, MASTER_ID)) {
     return ctx.reply(MASTER_ONLY_MESSAGE, { parse_mode: 'HTML' });
 }
 
@@ -4080,7 +4081,7 @@ bot.command('admin', async (ctx) => {
   if (!ensurePrivateChat(ctx)) return;
   logger.info('Admin menu requested');
 
-  if (!adminIds.includes(ctx.from.id)) {
+  if (!isAdmin(ctx.from?.id, adminIds)) {
     await ctx.reply('🚫 Anda tidak memiliki izin untuk mengakses menu admin.');
     return;
   }
