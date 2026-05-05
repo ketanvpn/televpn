@@ -29,6 +29,20 @@ const DELETE_ENDPOINT = {
   trojan: '/vps/deletetrojan',
 };
 
+const LOCK_ENDPOINT = {
+  ssh: '/vps/locksshvpn',
+  vmess: '/vps/lockvmess',
+  vless: '/vps/lockvless',
+  trojan: '/vps/locktrojan',
+};
+
+const UNLOCK_ENDPOINT = {
+  ssh: '/vps/unlocksshvpn',
+  vmess: '/vps/unlockvmess',
+  vless: '/vps/unlockvless',
+  trojan: '/vps/unlocktrojan',
+};
+
 function isValidUsername(username) {
   return /^[a-zA-Z0-9]+$/.test(String(username || ''));
 }
@@ -140,9 +154,51 @@ async function deleteAccountOnProvider(db, payload) {
   return { server, provider: data.data };
 }
 
+async function lockAccountOnProvider(db, payload) {
+  const { type, username, serverId } = payload;
+  if (!LOCK_ENDPOINT[type]) throw new Error('Tipe lock tidak didukung');
+  if (!isValidUsername(username)) throw new Error('Username tidak valid (hanya huruf/angka)');
+  const server = await getServerById(db, serverId);
+  if (!server) throw new Error('Server tidak ditemukan');
+
+  const url =
+    type === 'ssh'
+      ? `${getBaseUrl(server.domain)}${LOCK_ENDPOINT[type]}/${encodeURIComponent(username)}`
+      : `${getBaseUrl(server.domain)}${LOCK_ENDPOINT[type]}/${encodeURIComponent(username)}`;
+
+  const res = await axios.patch(url, {}, { headers: getHeaders(server.auth), timeout: 20000 });
+  const data = res.data;
+  if (data?.meta?.code !== 200 || !data?.data) {
+    throw new Error(data?.message || data?.meta?.message || 'Gagal lock akun');
+  }
+  return { server, provider: data.data };
+}
+
+async function unlockAccountOnProvider(db, payload) {
+  const { type, username, serverId } = payload;
+  if (!UNLOCK_ENDPOINT[type]) throw new Error('Tipe unlock tidak didukung');
+  if (!isValidUsername(username)) throw new Error('Username tidak valid (hanya huruf/angka)');
+  const server = await getServerById(db, serverId);
+  if (!server) throw new Error('Server tidak ditemukan');
+
+  const url =
+    type === 'ssh'
+      ? `${getBaseUrl(server.domain)}${UNLOCK_ENDPOINT[type]}/${encodeURIComponent(username)}/pw`
+      : `${getBaseUrl(server.domain)}${UNLOCK_ENDPOINT[type]}/${encodeURIComponent(username)}`;
+
+  const res = await axios.patch(url, {}, { headers: getHeaders(server.auth), timeout: 20000 });
+  const data = res.data;
+  if (data?.meta?.code !== 200 || !data?.data) {
+    throw new Error(data?.message || data?.meta?.message || 'Gagal unlock akun');
+  }
+  return { server, provider: data.data };
+}
+
 module.exports = {
   createPaidAccount,
   createTrialAccount,
   renewAccount,
   deleteAccountOnProvider,
+  lockAccountOnProvider,
+  unlockAccountOnProvider,
 };

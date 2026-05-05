@@ -53,6 +53,11 @@ This is a clean, modular scaffold for a Telegram VPN sales bot.
 - `/trial <type> <server_id>`: create trial account (1 hour)
 - `/renew <type> <username> <days> <server_id>`: renew account
 - `/delete <type> <username> <server_id>`: delete account
+- `/lock <type> <username> <server_id>`: lock account
+- `/unlock <type> <username> <server_id>`: unlock account
+- `/broadcastall <pesan>`: broadcast to all users (admin)
+- `/broadcastres <pesan>`: broadcast to reseller users (admin)
+- `/broadcastmem <pesan>`: broadcast to member users (admin)
 - `/backupnow`: send DB backup now (admin)
 - `/adminstats`: quick admin dashboard stats
 - `/adminlogs`: show recent admin audit trail

@@ -38,10 +38,18 @@ async function markAccountDeleted(db, accountId) {
   return db.run('UPDATE accounts SET status = ? WHERE id = ?', ['deleted', accountId]);
 }
 
+async function updateLatestAccountStatus(db, payload) {
+  const { userId, type, username, status } = payload;
+  const row = await getLatestAccountByUserTypeUsername(db, { userId, type, username });
+  if (!row) return { changes: 0 };
+  return db.run('UPDATE accounts SET status = ? WHERE id = ?', [status, row.id]);
+}
+
 module.exports = {
   createAccountRecord,
   listAccountsByUser,
   getLatestAccountByUserTypeUsername,
   updateAccountExpiry,
   markAccountDeleted,
+  updateLatestAccountStatus,
 };

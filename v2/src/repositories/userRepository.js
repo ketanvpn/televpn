@@ -28,8 +28,20 @@ async function setUserRole(db, userId, role) {
   return db.run('UPDATE users SET role = ?, updated_at = ? WHERE user_id = ?', [role, now, userId]);
 }
 
+async function listAllUserIds(db) {
+  const rows = await db.all('SELECT user_id FROM users ORDER BY id ASC');
+  return rows.map((r) => Number(r.user_id)).filter((n) => Number.isFinite(n) && n > 0);
+}
+
+async function listUserIdsByRole(db, role) {
+  const rows = await db.all('SELECT user_id FROM users WHERE role = ? ORDER BY id ASC', [role]);
+  return rows.map((r) => Number(r.user_id)).filter((n) => Number.isFinite(n) && n > 0);
+}
+
 module.exports = {
   upsertUser,
   getUserById,
   setUserRole,
+  listAllUserIds,
+  listUserIdsByRole,
 };

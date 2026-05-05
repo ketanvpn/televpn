@@ -1,11 +1,11 @@
-const { getUserById, setUserRole } = require('../../repositories/userRepository');
+const { getUserById, setUserRole, listAllUserIds, listUserIdsByRole } = require('../../repositories/userRepository');
 const { listPendingQrisPaymentsByUser } = require('../../repositories/qrisPaymentRepository');
-const { listAccountsByUser, createAccountRecord, getLatestAccountByUserTypeUsername, updateAccountExpiry, markAccountDeleted } = require('../../repositories/accountRepository');
+const { listAccountsByUser, createAccountRecord, getLatestAccountByUserTypeUsername, updateAccountExpiry, markAccountDeleted, updateLatestAccountStatus } = require('../../repositories/accountRepository');
 const { listActiveServers, createServer } = require('../../repositories/serverRepository');
 const { logAdminAction, listRecentAdminLogs } = require('../../repositories/adminAuditRepository');
 const { createTopupInvoice, finalizeInvoiceAsPaid, checkInvoiceStatus } = require('../../services/qrisService');
 const { getEffectiveRole, canAccessAdmin, canAccessReseller } = require('../../services/roleService');
-const { createPaidAccount, createTrialAccount, renewAccount, deleteAccountOnProvider } = require('../../services/provisioningService');
+const { createPaidAccount, createTrialAccount, renewAccount, deleteAccountOnProvider, lockAccountOnProvider, unlockAccountOnProvider } = require('../../services/provisioningService');
 const { adjustSaldoWithLedger } = require('../../services/walletService');
 const { sendBackupNow } = require('../../services/backupService');
 const { sendDailyReport } = require('../../services/dailyReportService');
@@ -33,6 +33,10 @@ function quickFlowKeyboard() {
 
 function isSupportedType(type) {
   return ['ssh', 'vmess', 'vless', 'trojan'].includes(String(type || '').toLowerCase());
+}
+
+function sleep(ms) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
 async function getAdminStats(db) {
@@ -276,6 +280,11 @@ function registerMenuHandlers(bot, db) {
       '• <code>/trial &lt;type&gt; &lt;server_id&gt;</code>',
       '• <code>/renew &lt;type&gt; &lt;username&gt; &lt;days&gt; &lt;server_id&gt;</code>',
       '• <code>/delete &lt;type&gt; &lt;username&gt; &lt;server_id&gt;</code>',
+      '• <code>/lock &lt;type&gt; &lt;username&gt; &lt;server_id&gt;</code>',
+      '• <code>/unlock &lt;type&gt; &lt;username&gt; &lt;server_id&gt;</code>',
+      '• <code>/broadcastall &lt;pesan&gt;</code>',
+      '• <code>/broadcastres &lt;pesan&gt;</code>',
+      '• <code>/broadcastmem &lt;pesan&gt;</code>',
       '• <code>/payok &lt;invoice_id&gt;</code> (simulasi settlement)',
       '• <code>/cekqris &lt;invoice_id&gt;</code> (cek status invoice)',
       '• <code>/backupnow</code> kirim backup database sekarang',
@@ -537,6 +546,80 @@ function registerMenuHandlers(bot, db) {
 
     return executeDelete(ctx, { type, username, serverId });
   });
+
+  bot.command('lock', async (ctx) => {
+    const parts = String(ctx.message.text || '').trim().split(/\s+/);
+    if (parts.length < 4) return ctx.reply('Format: /lock [type] [username] [server_id]');
+
+    const type = String(parts[1] || '').toLowerCase();
+    const username = parts[2];
+    const serverId = Number(parts[3] || 0);
+    try {
+      await lockAccountOnProvider(db, { type, username, serverId });
+      await updateLatestAccountStatus(db, { userId: ctx.from.id, type, username, status: 'locked' });
+      return ctx.reply(`Akun ${username} berhasil dikunci.`);
+    } catch (err) {
+      return ctx.reply(`Gagal lock: ${err.message}`);
+    }
+  });
+
+  bot.command('unlock', async (ctx) => {
+    const parts = String(ctx.message.text || '').trim().split(/\s+/);
+    if (parts.length < 4) return ctx.reply('Format: /unlock [type] [username] [server_id]');
+
+    const type = String(parts[1] || '').toLowerCase();
+    const username = parts[2];
+    const serverId = Number(parts[3] || 0);
+    try {
+      await unlockAccountOnProvider(db, { type, username, serverId });
+      await updateLatestAccountStatus(db, { userId: ctx.from.id, type, username, status: 'active' });
+      return ctx.reply(`Akun ${username} berhasil dibuka.`);
+    } catch (err) {
+      return ctx.reply(`Gagal unlock: ${err.message}`);
+    }
+  });
+
+  async function doBroadcast(ctx, mode) {
+    const row = await getUserById(db, ctx.from.id);
+    const actorRole = getEffectiveRole(ctx.from.id, row ? row.role : 'member');
+    if (!canAccessAdmin(actorRole)) return ctx.reply('Tidak punya akses.');
+
+    const message = String(ctx.message.text || '').replace(/^\/\w+\s*/i, '').trim();
+    if (!message) return ctx.reply('Pesan kosong. Contoh: /broadcastall Promo malam ini');
+
+    let targets = [];
+    if (mode === 'all') targets = await listAllUserIds(db);
+    if (mode === 'reseller') targets = await listUserIdsByRole(db, 'reseller');
+    if (mode === 'member') targets = await listUserIdsByRole(db, 'member');
+
+    if (!targets.length) return ctx.reply('Target user kosong.');
+
+    let ok = 0;
+    let fail = 0;
+    await ctx.reply(`Broadcast dimulai ke ${targets.length} user...`);
+
+    for (const uid of targets) {
+      try {
+        await ctx.telegram.sendMessage(uid, message);
+        ok += 1;
+      } catch (_) {
+        fail += 1;
+      }
+      await sleep(80);
+    }
+
+    await logAdminAction(db, {
+      adminUserId: ctx.from.id,
+      action: `broadcast_${mode}`,
+      detail: `target=${targets.length};ok=${ok};fail=${fail}`,
+    });
+
+    return ctx.reply(`Broadcast selesai. Target=${targets.length}, berhasil=${ok}, gagal=${fail}.`);
+  }
+
+  bot.command('broadcastall', async (ctx) => doBroadcast(ctx, 'all'));
+  bot.command('broadcastres', async (ctx) => doBroadcast(ctx, 'reseller'));
+  bot.command('broadcastmem', async (ctx) => doBroadcast(ctx, 'member'));
 
   bot.command('backupnow', async (ctx) => {
     const row = await getUserById(db, ctx.from.id);
