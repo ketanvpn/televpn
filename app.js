@@ -79,6 +79,10 @@ const {
 } = require('./src/bot/middleware/callbackRateLimit');
 const { transactionLockMiddleware } = require('./src/bot/middleware/transactionLock');
 const { ensurePrivateChat } = require('./src/bot/guards/privateChat');
+const {
+  createLicenseInfoGetter,
+  licenseGuardMiddleware,
+} = require('./src/bot/guards/license');
 
 const trialFile = TRIAL_DB_PATH;
 const trialConfigFile = TRIAL_CONFIG_PATH;
@@ -2076,56 +2080,11 @@ async function handleCheckGopayApiKey(ctx) {
 bot.command('cekgopayapikey', handleCheckGopayApiKey);
 
 // ====== FUNGSI INFO LISENSI BOT ======
-function getLicenseInfo() {
-  if (!EXPIRE_DATE) return null;
-
-  // Anggap EXPIRE_DATE dalam format "YYYY-MM-DD"
-  const now = new Date();
-  const expire = new Date(EXPIRE_DATE + 'T23:59:59');
-
-  const diffMs   = expire - now;
-  const daysLeft = Math.ceil(diffMs / (1000 * 60 * 60 * 24)); // dibulatkan ke atas
-
-  return { expire, daysLeft };
-}
+const getLicenseInfo = createLicenseInfoGetter(() => EXPIRE_DATE);
 // ====== AKHIR FUNGSI INFO LISENSI ======
 
 // === MIDDLEWARE KUNCI LISENSI ===
-bot.use(async (ctx, next) => {
-  // Kalau EXPIRE_DATE belum di-set → anggap free, jangan blokir
-  if (!EXPIRE_DATE) {
-    return next();
-  }
-
-  const info = getLicenseInfo();
-  if (!info) {
-    return next();
-  }
-
-  // Kalau lisensi masih aktif → lanjut ke handler berikutnya
-  if (info.daysLeft > 0) {
-    return next();
-  }
-
-  // Kalau yang akses adalah MASTER → tetap boleh lanjut (biar bisa /addhari dll)
-  if (ctx.from && ctx.from.id === MASTER_ID) {
-    return next();
-  }
-
-  // Selain MASTER: blokir, kasih info lisensi habis
-  try {
-    await ctx.reply(
-      '⛔ *Bot sementara nonaktif karena lisensi sudah habis.*\n' +
-      'Silakan hubungi owner untuk perpanjang.',
-      { parse_mode: 'Markdown' }
-    );
-  } catch (e) {
-    // kalau gagal kirim pesan, diamkan saja
-  }
-
-  // Jangan lanjut ke handler lain
-  return;
-});
+bot.use(licenseGuardMiddleware({ getLicenseInfo, masterId: MASTER_ID }));
 
 // Update tanggal lisensi di memori & di file .vars.json
 function setLicenseExpireDate(newDateStr) {
