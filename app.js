@@ -88,6 +88,7 @@ const {
   MASTER_ONLY_MESSAGE,
   parseAdminIds,
   isAdmin,
+  isMaster,
 } = require('./src/bot/guards/access');
 
 const trialFile = TRIAL_DB_PATH;
@@ -2998,7 +2999,7 @@ bot.command('testgroup', async (ctx) => {
 	// Wajib di private chat
   if (!ensurePrivateChat(ctx)) return;
   // Hanya admin yang boleh pakai perintah ini
-  if (!ctx.from || !adminIds.includes(ctx.from.id)) {
+  if (!isAdmin(ctx.from?.id, adminIds)) {
     return ctx.reply(NO_ACCESS_MESSAGE, { parse_mode: 'HTML' });
 }
 
@@ -3015,7 +3016,7 @@ bot.command('testgroup', async (ctx) => {
 bot.command('daily_report_test', async (ctx) => {
 	// Wajib di private chat
   if (!ensurePrivateChat(ctx)) return;
-  if (!ctx.from || ctx.from.id !== MASTER_ID) {
+  if (!isMaster(ctx.from?.id, MASTER_ID)) {
     return ctx.reply(MASTER_ONLY_MESSAGE, { parse_mode: 'HTML' });
 }
 
@@ -3125,7 +3126,7 @@ bot.command('expired_reminder_test', (ctx) => {
 bot.command('backup_auto_test', async (ctx) => {
 	// Wajib di private chat
   if (!ensurePrivateChat(ctx)) return;
-  if (!ctx.from || ctx.from.id !== MASTER_ID) {
+  if (!isMaster(ctx.from?.id, MASTER_ID)) {
     return ctx.reply(MASTER_ONLY_MESSAGE, { parse_mode: 'HTML' });
 }
 
@@ -3138,7 +3139,7 @@ bot.command('backup_auto_test', async (ctx) => {
 bot.command('lisensi', async (ctx) => {
 	// Wajib di private chat
   if (!ensurePrivateChat(ctx)) return;
-   if (!ctx.from || !ADMIN_IDS.includes(ctx.from.id)) {
+   if (!isAdmin(ctx.from?.id, ADMIN_IDS)) {
     return ctx.reply(NO_ACCESS_MESSAGE, { parse_mode: 'HTML' });
 }
 
@@ -3187,7 +3188,7 @@ bot.command('lisensi', async (ctx) => {
 bot.command('health', async (ctx) => {
 	// Wajib di private chat
   if (!ensurePrivateChat(ctx)) return;
-  if (!ctx.from || !ADMIN_IDS.includes(ctx.from.id)) {
+  if (!isAdmin(ctx.from?.id, ADMIN_IDS)) {
     return ctx.reply(NO_ACCESS_MESSAGE, { parse_mode: 'HTML' });
 }
 

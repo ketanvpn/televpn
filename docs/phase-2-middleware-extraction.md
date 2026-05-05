@@ -13,6 +13,7 @@ Selesai:
 - Extract license info getter dan license guard ke `src/bot/guards/license.js`
 - Extract access messages dan parser admin IDs ke `src/bot/guards/access.js`
 - Replace admin checks area GoPay API key dengan `isAdmin()` helper
+- Replace checks `/testgroup`, `/daily_report_test`, `/backup_auto_test`, `/lisensi`, `/health` dengan access helpers
 - Wiring di `app.js` tetap berada di posisi lama
 - Syntax check `app.js`, `callbackRateLimit.js`, `transactionLock.js`, `privateChat.js`, `license.js`, dan `access.js` bersih
 
@@ -36,6 +37,7 @@ Selesai:
 - Middleware kunci lisensi sekarang memakai `licenseGuardMiddleware({ getLicenseInfo, masterId: MASTER_ID })`
 - `NO_ACCESS_MESSAGE`, `MASTER_ONLY_MESSAGE`, dan parsing `ADMIN_IDS_RAW` sekarang berasal dari access guard helper
 - Permission check GoPay API key sekarang memakai `isAdmin(ctx.from?.id, ADMIN_IDS)`
+- Permission check beberapa command admin/master awal sekarang memakai `isAdmin()` dan `isMaster()`
 
 ## Validasi
 
