@@ -6,6 +6,7 @@ const { createTopupInvoice, finalizeInvoiceAsPaid, checkInvoiceStatus } = requir
 const { getEffectiveRole, canAccessAdmin, canAccessReseller } = require('../../services/roleService');
 const { createPaidAccount, createTrialAccount, renewAccount, deleteAccountOnProvider } = require('../../services/provisioningService');
 const { adjustSaldoWithLedger } = require('../../services/walletService');
+const { sendBackupNow } = require('../../services/backupService');
 const { buildMainMenuText, buildMainKeyboard, formatRupiah } = require('../ui/mainMenu');
 
 const stateByUser = new Map();
@@ -176,6 +177,7 @@ function registerMenuHandlers(bot, db) {
       '• <code>/delete &lt;type&gt; &lt;username&gt; &lt;server_id&gt;</code>',
       '• <code>/payok &lt;invoice_id&gt;</code> (simulasi settlement)',
       '• <code>/cekqris &lt;invoice_id&gt;</code> (cek status invoice)',
+      '• <code>/backupnow</code> kirim backup database sekarang',
       '• /menu kembali ke menu utama',
     ].join('\n');
 
@@ -376,6 +378,16 @@ function registerMenuHandlers(bot, db) {
     } catch (err) {
       return ctx.reply(`Gagal delete: ${err.message}`);
     }
+  });
+
+  bot.command('backupnow', async (ctx) => {
+    const row = await getUserById(db, ctx.from.id);
+    const actorRole = getEffectiveRole(ctx.from.id, row ? row.role : 'member');
+    if (!canAccessAdmin(actorRole)) return ctx.reply('Tidak punya akses.');
+
+    await ctx.reply('Menjalankan backup sekarang...');
+    await sendBackupNow(bot, `manual by ${ctx.from.id}`);
+    return ctx.reply('Backup selesai dikirim (cek chat backup).');
   });
 
   bot.command('payok', async (ctx) => {

@@ -12,6 +12,15 @@ This is a clean, modular scaffold for a Telegram VPN sales bot.
 4. Start bot:
    `npm start`
 
+## PM2 deployment
+
+- Start with ecosystem:
+  `pm2 start ecosystem.v2.config.js`
+- Save process list:
+  `pm2 save`
+- Restart with env refresh:
+  `pm2 restart televpn-v2 --update-env`
+
 ## Structure
 
 - `src/core`: config, logger, db and shared utilities
@@ -44,8 +53,15 @@ This is a clean, modular scaffold for a Telegram VPN sales bot.
 - `/trial <type> <server_id>`: create trial account (1 hour)
 - `/renew <type> <username> <days> <server_id>`: renew account
 - `/delete <type> <username> <server_id>`: delete account
+- `/backupnow`: send DB backup now (admin)
 
 ## Notes for next integration
 
 - QRIS live endpoint is ready via `GOPAY_API_KEY` and `GOPAY_API_BASE_URL` in `.env`.
 - Provisioning API integration (create/trial/renew/delete account) should be added as separate modules under `src/services`.
+
+## Backup scheduler env
+
+- `AUTO_BACKUP_ENABLED=true|false`
+- `AUTO_BACKUP_INTERVAL_MIN=360`
+- `BACKUP_CHAT_ID=<telegram_chat_id>`

@@ -5,6 +5,7 @@ const { callbackRateLimit } = require('./middleware/callbackRateLimit');
 const { registerBasicCommands } = require('./handlers/basicCommands');
 const { registerMenuHandlers } = require('./handlers/menuHandlers');
 const { pollPendingQrisPayments } = require('../services/qrisService');
+const { startBackupScheduler } = require('../services/backupService');
 
 function createBot({ db }) {
   const bot = new Telegraf(config.botToken);
@@ -33,6 +34,8 @@ function createBot({ db }) {
       logger.warn(`QRIS poll error: ${err.message}`);
     });
   }, Math.max(3000, Number(config.qrisPollIntervalMs || 7000)));
+
+  startBackupScheduler(bot);
 
   return bot;
 }

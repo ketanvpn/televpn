@@ -12,6 +12,8 @@ function buildMainMenuText(payload) {
     `<b>Role</b>: ${role}`,
     `<b>Saldo</b>: ${formatRupiah(saldo)}`,
     '',
+    '<i>Quick command: /servers, /create, /trial, /renew, /delete</i>',
+    '',
     'Pilih menu di bawah:',
   ].join('\n');
 }

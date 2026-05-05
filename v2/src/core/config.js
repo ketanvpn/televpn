@@ -14,6 +14,9 @@ const config = {
   gopayApiKey: String(process.env.GOPAY_API_KEY || '').trim(),
   gopayApiBaseUrl: String(process.env.GOPAY_API_BASE_URL || 'https://api-gopay.autoftbot.com').trim(),
   qrisPollIntervalMs: Number(process.env.QRIS_POLL_INTERVAL_MS || 7000),
+  autoBackupEnabled: String(process.env.AUTO_BACKUP_ENABLED || 'true').toLowerCase() === 'true',
+  autoBackupIntervalMin: Number(process.env.AUTO_BACKUP_INTERVAL_MIN || 360),
+  backupChatId: Number(process.env.BACKUP_CHAT_ID || process.env.MASTER_ID || 0),
 };
 
 if (!config.botToken) {
