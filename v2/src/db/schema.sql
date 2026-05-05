@@ -65,3 +65,15 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_transactions_reference_id ON transactions(
 CREATE INDEX IF NOT EXISTS idx_transactions_user_created_at ON transactions(user_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_accounts_user_created_at ON accounts(user_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_qris_payments_user_created_at ON qris_payments(user_id, created_at);
+
+CREATE TABLE IF NOT EXISTS admin_audit_logs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  admin_user_id INTEGER NOT NULL,
+  action TEXT NOT NULL,
+  target_user_id INTEGER,
+  target_ref TEXT,
+  detail TEXT,
+  created_at INTEGER NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_admin_audit_created_at ON admin_audit_logs(created_at);

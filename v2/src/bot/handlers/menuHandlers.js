@@ -2,6 +2,7 @@ const { getUserById, setUserRole } = require('../../repositories/userRepository'
 const { listPendingQrisPaymentsByUser } = require('../../repositories/qrisPaymentRepository');
 const { listAccountsByUser, createAccountRecord, getLatestAccountByUserTypeUsername, updateAccountExpiry, markAccountDeleted } = require('../../repositories/accountRepository');
 const { listActiveServers, createServer } = require('../../repositories/serverRepository');
+const { logAdminAction, listRecentAdminLogs } = require('../../repositories/adminAuditRepository');
 const { createTopupInvoice, finalizeInvoiceAsPaid, checkInvoiceStatus } = require('../../services/qrisService');
 const { getEffectiveRole, canAccessAdmin, canAccessReseller } = require('../../services/roleService');
 const { createPaidAccount, createTrialAccount, renewAccount, deleteAccountOnProvider } = require('../../services/provisioningService');
@@ -277,6 +278,7 @@ function registerMenuHandlers(bot, db) {
       '• <code>/payok &lt;invoice_id&gt;</code> (simulasi settlement)',
       '• <code>/cekqris &lt;invoice_id&gt;</code> (cek status invoice)',
       '• <code>/backupnow</code> kirim backup database sekarang',
+      '• <code>/adminlogs</code> lihat audit action admin',
       '• /menu kembali ke menu utama',
     ].join('\n');
 
@@ -329,6 +331,12 @@ function registerMenuHandlers(bot, db) {
 
     const res = await setUserRole(db, targetId, role);
     if (!res.changes) return ctx.reply('User target tidak ditemukan.');
+    await logAdminAction(db, {
+      adminUserId: ctx.from.id,
+      action: 'setrole',
+      targetUserId: targetId,
+      detail: `role=${role}`,
+    });
     return ctx.reply(`Role user ${targetId} diubah menjadi ${role}.`);
   });
 
@@ -347,6 +355,12 @@ function registerMenuHandlers(bot, db) {
     const price = Number(priceRaw || 0);
     const isResellerOnly = String(resellerOnlyRaw) === '1';
     const res = await createServer(db, { name, domain, authToken, price, isResellerOnly });
+    await logAdminAction(db, {
+      adminUserId: ctx.from.id,
+      action: 'addserver',
+      targetRef: `server:${res.lastID}`,
+      detail: `name=${name};domain=${domain};price=${price};reseller_only=${isResellerOnly ? 1 : 0}`,
+    });
     return ctx.reply(`Server ditambahkan. ID: ${res.lastID}`);
   });
 
@@ -529,6 +543,11 @@ function registerMenuHandlers(bot, db) {
 
     await ctx.reply('Menjalankan backup sekarang...');
     await sendBackupNow(bot, `manual by ${ctx.from.id}`);
+    await logAdminAction(db, {
+      adminUserId: ctx.from.id,
+      action: 'backupnow',
+      detail: 'manual backup triggered',
+    });
     return ctx.reply('Backup selesai dikirim (cek chat backup).');
   });
 
@@ -557,6 +576,14 @@ function registerMenuHandlers(bot, db) {
     if (result.alreadyPaid) {
       return ctx.reply(`Invoice ${invoiceId} sudah paid sebelumnya.`);
     }
+
+    await logAdminAction(db, {
+      adminUserId: ctx.from.id,
+      action: 'payok',
+      targetUserId: result.userId,
+      targetRef: invoiceId,
+      detail: `amount=${result.amount}`,
+    });
 
     try {
       await ctx.telegram.sendMessage(
@@ -595,6 +622,25 @@ function registerMenuHandlers(bot, db) {
       ].join('\n'),
       { parse_mode: 'HTML' }
     );
+  });
+
+  bot.command('adminlogs', async (ctx) => {
+    const row = await getUserById(db, ctx.from.id);
+    const actorRole = getEffectiveRole(ctx.from.id, row ? row.role : 'member');
+    if (!canAccessAdmin(actorRole)) return ctx.reply('Tidak punya akses.');
+
+    const logs = await listRecentAdminLogs(db, 20);
+    if (!logs.length) return ctx.reply('Belum ada log admin.');
+
+    const lines = ['<b>Admin Audit Logs (20 terbaru)</b>', ''];
+    logs.forEach((item, idx) => {
+      const t = new Date(Number(item.created_at || 0)).toLocaleString('id-ID');
+      lines.push(
+        `${idx + 1}. <b>${item.action}</b> | admin=<code>${item.admin_user_id}</code> | target=${item.target_user_id || '-'} | ref=${item.target_ref || '-'} | ${t}`
+      );
+    });
+
+    return ctx.reply(lines.join('\n'), { parse_mode: 'HTML' });
   });
 
   bot.on('text', async (ctx, next) => {
