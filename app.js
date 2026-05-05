@@ -72,6 +72,7 @@ const { mdToHtml } = require('./src/core/telegramSafeHtml');
 const varsStore = require('./src/core/varsStore');
 const { msgSuccess, msgError, msgInfo } = require('./src/bot/ui/messages');
 const { toast, toastError } = require('./src/bot/ui/toast');
+const { sendCleanMenu } = require('./src/bot/ui/cleanMenu');
 
 const trialFile = TRIAL_DB_PATH;
 const trialConfigFile = TRIAL_CONFIG_PATH;
@@ -1584,44 +1585,6 @@ bot.on('callback_query', async (ctx, next) => {
 });// =====================================================
 // Helper menu bersih (edit/replace + hapus menu lama)
 // =====================================================
-const lastMenuMsgId = new Map(); // userId -> message_id bot terakhir (menu)
-
-async function sendCleanMenu(ctx, text, extra = {}) {
-  const userId = ctx.from?.id;
-  if (!userId) return;
-
-  // 1) Kalau datang dari callback (klik tombol) -> EDIT pesan yang sama
-  if (ctx.callbackQuery && ctx.update?.callback_query?.message) {
-    try {
-      await ctx.editMessageText(text, { parse_mode: 'HTML', ...extra });
-      // simpan id pesan yg sedang diedit
-      const mid = ctx.update.callback_query.message.message_id;
-      lastMenuMsgId.set(userId, mid);
-      return;
-    } catch (e) {
-      // kalau gagal edit (misal pesan terlalu lama / beda jenis)
-      // lanjut ke opsi hapus+kirim
-    }
-  }
-
-  // 2) Kalau bukan callback (misal /menu, /start) -> hapus menu bot sebelumnya
-  const prevId = lastMenuMsgId.get(userId);
-  if (prevId) {
-    try {
-      await ctx.telegram.deleteMessage(ctx.chat.id, prevId);
-    } catch (e) {
-      // bisa gagal kalau:
-      // - di grup (bot gak punya hak delete)
-      // - pesan sudah lama
-      // biarin aja
-    }
-  }
-
-  // 3) kirim menu baru
-  const sent = await ctx.reply(text, { parse_mode: 'HTML', ...extra });
-  if (sent?.message_id) lastMenuMsgId.set(userId, sent.message_id);
-}
-
 async function showErrorOnMenu(ctx, htmlText) {
   await sendCleanMenu(ctx, `⚠️ <b>Terjadi kesalahan</b>\n${htmlText}`, { parse_mode: 'HTML' });
 }

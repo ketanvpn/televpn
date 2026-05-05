@@ -13,8 +13,9 @@ Selesai:
 - Extract `.vars.json` store ke `src/core/varsStore.js`
 - Extract template pesan standar ke `src/bot/ui/messages.js`
 - Extract helper toast callback ke `src/bot/ui/toast.js`
+- Extract clean menu helper ke `src/bot/ui/cleanMenu.js`
 - Update `app.js` agar memakai module core baru
-- Syntax check `app.js`, `logger.js`, `paths.js`, `formatters.js`, `telegramSafeHtml.js`, `varsStore.js`, `messages.js`, dan `toast.js` bersih
+- Syntax check `app.js`, `logger.js`, `paths.js`, `formatters.js`, `telegramSafeHtml.js`, `varsStore.js`, `messages.js`, `toast.js`, dan `cleanMenu.js` bersih
 
 ## File Baru
 
@@ -25,6 +26,7 @@ Selesai:
 - `src/core/varsStore.js`
 - `src/bot/ui/messages.js`
 - `src/bot/ui/toast.js`
+- `src/bot/ui/cleanMenu.js`
 
 ## Perubahan di app.js
 
@@ -35,6 +37,7 @@ Selesai:
 - Load/read/write `.vars.json` sekarang didelegasikan ke `src/core/varsStore.js`
 - `msgSuccess`, `msgError`, `msgInfo` sekarang dipakai dari `src/bot/ui/messages.js`
 - `toast` dan `toastError` sekarang dipakai dari `src/bot/ui/toast.js`
+- `sendCleanMenu` dan state `lastMenuMsgId` sekarang berada di `src/bot/ui/cleanMenu.js`
 
 ## Belum Dipindah
 
@@ -58,6 +61,7 @@ node --check src/core/telegramSafeHtml.js
 node --check src/core/varsStore.js
 node --check src/bot/ui/messages.js
 node --check src/bot/ui/toast.js
+node --check src/bot/ui/cleanMenu.js
 ```
 
 Hasil: tidak ada error syntax.
@@ -66,6 +70,6 @@ Hasil: tidak ada error syntax.
 
 Lanjut ekstraksi kecil berikutnya:
 
-1. Extract helper clean menu dengan hati-hati karena punya state `lastMenuMsgId`.
-2. Extract middleware license/callback lock.
-3. Setelah itu baru masuk repository/query layer kecil.
+1. Extract middleware license/callback lock.
+2. Setelah itu baru masuk repository/query layer kecil.
+3. Mulai Fase 2 jika helper core sudah cukup stabil.
