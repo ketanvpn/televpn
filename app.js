@@ -4591,7 +4591,7 @@ bot.command('broadcastres', async (ctx) => {
   logger.info(`Broadcastres command received from user_id: ${userId}`);
 
   // Hanya admin
-  if (!ADMIN_IDS.includes(userId)) {
+  if (!isAdmin(userId, ADMIN_IDS)) {
     return ctx.reply(NO_ACCESS_MESSAGE, { parse_mode: 'HTML' });
   }
 
@@ -4712,7 +4712,7 @@ bot.command('broadcastmem', async (ctx) => {
   logger.info(`Broadcastmem command received from user_id: ${userId}`);
 
   // Hanya admin
-  if (!ADMIN_IDS.includes(userId)) {
+  if (!isAdmin(userId, ADMIN_IDS)) {
     return ctx.reply(NO_ACCESS_MESSAGE, { parse_mode: 'HTML' });
   }
 
@@ -4786,7 +4786,7 @@ bot.command('broadcastmem', async (ctx) => {
       }
 
       // Skip admin
-      if (ADMIN_IDS.includes(targetId)) {
+      if (isAdmin(targetId, ADMIN_IDS)) {
         continue;
       }
 
@@ -4847,7 +4847,7 @@ bot.command('cekqris', async (ctx) => {
   const userId = ctx.from?.id || 0;
 
   // Hanya admin / owner
-  if (!adminIds.includes(userId) && userId !== MASTER_ID) {
+  if (!isAdminOrMaster(userId, adminIds, MASTER_ID)) {
     return ctx.reply(NO_ACCESS_MESSAGE, { parse_mode: 'HTML' });
   }
 
