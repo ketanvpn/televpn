@@ -26,6 +26,7 @@ Selesai:
 - Replace checks auto-backup master-only dan beberapa callback admin utility dengan access helpers
 - Replace checks callback server/promo/list menus dan filter admin list users dengan access helpers
 - Final sweep: replace sisa direct admin/master guard checks lintas command/callback ke access helpers
+- Cleanup usage non-guard `ADMIN_IDS.includes(...)` ke helper untuk status/label admin
 - Wiring di `app.js` tetap berada di posisi lama
 - Syntax check `app.js`, `callbackRateLimit.js`, `transactionLock.js`, `privateChat.js`, `license.js`, dan `access.js` bersih
 
@@ -62,6 +63,7 @@ Selesai:
 - Permission check auto-backup master-only sekarang memakai `isMaster()`; callback admin utility memakai `isAdmin()`
 - Permission check callback server/promo/list menu sekarang memakai `isAdmin()`; filter admin list users memakai `isAdmin()`
 - Sisa guard akses direct `adminIds.includes(...)`/`ADMIN_IDS.includes(...)`/`!== MASTER_ID` sudah diseragamkan ke helper
+- Penggunaan status admin non-guard (menu badge dan cek_service) juga sudah pakai helper `isAdmin()`
 
 ## Validasi
 

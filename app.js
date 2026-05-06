@@ -4113,11 +4113,11 @@ async function sendMainMenu(ctx) {
 
 
   // Cek apakah user ini admin
-  const isAdmin = ADMIN_IDS.includes(userId);
+  const isAdminUser = isAdmin(userId, ADMIN_IDS);
 
   // Tentukan status user + badge
   let userStatus = '👤 Member';
-  if (isAdmin) {
+  if (isAdminUser) {
     userStatus = '🛡️ Admin';
   } else if (isReseller) {
     userStatus = '🤝 Reseller';
@@ -4149,7 +4149,7 @@ async function sendMainMenu(ctx) {
   }
 
   // Teks panel admin (hanya muncul kalau user adalah admin)
-  const commandPanelText = isAdmin ? `
+  const commandPanelText = isAdminUser ? `
 <code>⚙️ COMMAND PANEL</code>
 🏠 /start       → Menu Utama
 🔑 /admin       → Menu Admin
@@ -9810,7 +9810,7 @@ bot.action('cek_service', async (ctx) => {
     await ctx.answerCbQuery().catch(() => {});
 
     const userId = ctx.from.id;
-    const isAdmin = ADMIN_IDS.includes(userId);
+    const isAdminUser = isAdmin(userId, ADMIN_IDS);
 
     // 🔍 Cek status reseller pakai helper yang sama dengan fitur lain
     let isReseller = false;
@@ -9821,7 +9821,7 @@ bot.action('cek_service', async (ctx) => {
     }
 
     // Hanya Reseller & Admin yang boleh cek server
-    if (!isReseller && !isAdmin) {
+    if (!isReseller && !isAdminUser) {
       return ctx.reply(
         '❌ *Fitur cek server hanya untuk Reseller dan Admin.*\n\n' +
         'Kalau kamu ingin akses menu cek server & monitoring, kamu bisa daftar sebagai *Reseller* lewat menu yang tersedia atau hubungi admin.',
