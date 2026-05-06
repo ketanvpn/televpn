@@ -8008,7 +8008,7 @@ function buildAutoBackupKeyboard() {
 // Buka menu pengaturan auto-backup
 bot.action('backup_auto_menu', async (ctx) => {
   const adminId = ctx.from.id;
-  if (adminId !== MASTER_ID) {
+  if (!isMaster(adminId, MASTER_ID)) {
   return ctx.answerCbQuery('Tidak ada izin.', { show_alert: true });
 }
 
@@ -8026,7 +8026,7 @@ bot.action('backup_auto_menu', async (ctx) => {
 // Toggle ON/OFF
 bot.action('backup_auto_toggle', async (ctx) => {
   const adminId = ctx.from.id;
-  if (adminId !== MASTER_ID) {
+  if (!isMaster(adminId, MASTER_ID)) {
   return ctx.answerCbQuery('Tidak ada izin.', { show_alert: true });
 }
 
@@ -8055,7 +8055,7 @@ bot.action('backup_auto_toggle', async (ctx) => {
 // Ubah interval ±1 jam
 async function adjustIntervalAndRefresh(ctx, delta) {
   const adminId = ctx.from.id;
-  if (adminId !== MASTER_ID) {
+  if (!isMaster(adminId, MASTER_ID)) {
   return ctx.answerCbQuery('Tidak ada izin.', { show_alert: true });
 }
 
@@ -8086,7 +8086,7 @@ bot.action('backup_auto_interval_plus', (ctx) => adjustIntervalAndRefresh(ctx, +
 // Preset interval 6 / 12 / 24 jam
 async function setIntervalPreset(ctx, value) {
   const adminId = ctx.from.id;
-  if (adminId !== MASTER_ID) {
+  if (!isMaster(adminId, MASTER_ID)) {
   return ctx.answerCbQuery('Tidak ada izin.', { show_alert: true });
 }
 
@@ -8117,7 +8117,7 @@ bot.action('backup_auto_set_24', (ctx) => setIntervalPreset(ctx, 24));
 bot.action('cek_saldo_user', async (ctx) => {
   const adminId = ctx.from.id;
 
-  if (!adminIds.includes(adminId)) {
+  if (!isAdmin(adminId, adminIds)) {
     return ctx.reply('🚫 Anda tidak memiliki izin untuk menggunakan fitur ini.');
   }
 
@@ -8130,7 +8130,7 @@ bot.action('cek_saldo_user', async (ctx) => {
 bot.action('riwayat_saldo_user', async (ctx) => {
   const adminId = ctx.from.id;
 
-  if (!adminIds.includes(adminId)) {
+  if (!isAdmin(adminId, adminIds)) {
     return ctx.reply('🚫 Anda tidak memiliki izin untuk menggunakan fitur ini.');
   }
 
@@ -8144,7 +8144,7 @@ bot.action('riwayat_saldo_user', async (ctx) => {
 bot.action('flag_user_start', async (ctx) => {
   const adminId = ctx.from.id;
 
-  if (!adminIds.includes(adminId)) {
+  if (!isAdmin(adminId, adminIds)) {
     return ctx.reply('🚫 Anda tidak memiliki izin untuk menggunakan fitur ini.');
   }
 
@@ -8164,7 +8164,7 @@ bot.action('flag_user_start', async (ctx) => {
 bot.action(/flag_user_set_(NORMAL|WATCHLIST|NAKAL)_(\d+)/, async (ctx) => {
   const adminId = ctx.from.id;
 
-  if (!adminIds.includes(adminId)) {
+  if (!isAdmin(adminId, adminIds)) {
     return ctx.reply('🚫 Anda tidak memiliki izin untuk menggunakan fitur ini.');
   }
 
@@ -8214,7 +8214,7 @@ bot.action('monitor_panel', async (ctx) => {
   const adminId = ctx.from.id;
 
   // Hanya admin yang boleh akses menu ini
-  if (!ADMIN_IDS.includes(adminId)) {
+  if (!isAdmin(adminId, ADMIN_IDS)) {
     return ctx.reply('🚫 Anda tidak memiliki izin untuk menggunakan menu ini.');
   }
 
