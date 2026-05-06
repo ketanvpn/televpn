@@ -6383,7 +6383,7 @@ async function sendBroadcastFromMenu(ctx, target, message) {
 
     // Kirim ringkasan ke MASTER_ID (kalau beda dengan pengirim)
     try {
-      if (MASTER_ID && ctx.from && ctx.from.id !== MASTER_ID) {
+      if (MASTER_ID && ctx.from && !isMaster(ctx.from.id, MASTER_ID)) {
         await bot.telegram.sendMessage(
           MASTER_ID,
           `📢 <b>Ringkasan Pengumuman</b>\n` +
@@ -6417,7 +6417,7 @@ bot.action('broadcast_menu', async (ctx) => {
   }
 
   const adminId = ctx.from.id;
-  if (!adminIds.includes(adminId)) {
+  if (!isAdmin(adminId, adminIds)) {
     return ctx.reply(NO_ACCESS_MESSAGE, { parse_mode: 'HTML' });
 }
 
@@ -6458,7 +6458,7 @@ async function handleBroadcastTargetFromMenu(ctx, target) {
   if (!ctx.from) return;
   const adminId = ctx.from.id;
 
-  if (!adminIds.includes(adminId)) {
+  if (!isAdmin(adminId, adminIds)) {
     return ctx.reply(NO_ACCESS_MESSAGE, { parse_mode: 'HTML' });
 }
 
@@ -6508,7 +6508,7 @@ bot.action('broadcast_mode_manual', async (ctx) => {
   if (!ctx.from) return;
   const adminId = ctx.from.id;
 
-  if (!adminIds.includes(adminId)) {
+  if (!isAdmin(adminId, adminIds)) {
     return ctx.reply(NO_ACCESS_MESSAGE, { parse_mode: 'HTML' });
 }
 
@@ -6535,7 +6535,7 @@ bot.action('broadcast_mode_maintenance', async (ctx) => {
   if (!ctx.from) return;
   const adminId = ctx.from.id;
 
-  if (!adminIds.includes(adminId)) {
+  if (!isAdmin(adminId, adminIds)) {
     return ctx.reply(NO_ACCESS_MESSAGE, { parse_mode: 'HTML' });
 }
 
@@ -6567,7 +6567,7 @@ bot.action('broadcast_mode_promo', async (ctx) => {
   if (!ctx.from) return;
   const adminId = ctx.from.id;
 
-  if (!adminIds.includes(adminId)) {
+  if (!isAdmin(adminId, adminIds)) {
     return ctx.reply(NO_ACCESS_MESSAGE, { parse_mode: 'HTML' });
 }
 
