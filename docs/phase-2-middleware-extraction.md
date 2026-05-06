@@ -21,6 +21,7 @@ Selesai:
 - Replace checks `/broadcastres`, `/broadcastmem`, skip-admin broadcast member, dan `/cekqris` dengan access helpers
 - Replace checks command server management dengan access helpers
 - Replace checks admin menu license header dan admin trial actions dengan access helpers
+- Replace checks callback admin reseller target/bonus menu dengan access helpers
 - Wiring di `app.js` tetap berada di posisi lama
 - Syntax check `app.js`, `callbackRateLimit.js`, `transactionLock.js`, `privateChat.js`, `license.js`, dan `access.js` bersih
 
@@ -52,6 +53,7 @@ Selesai:
 - Permission check command broadcast lanjutan dan cek QRIS sekarang memakai access helpers
 - Permission check command server management sekarang memakai `isAdmin()`
 - Permission check admin trial menu/action sekarang memakai `isAdmin()`
+- Permission check callback admin reseller target/bonus sekarang memakai `isAdmin()`
 
 ## Validasi
 

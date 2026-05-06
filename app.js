@@ -8481,7 +8481,7 @@ bot.action('admin_reseller_target', async (ctx) => {
   try {
     await ctx.answerCbQuery().catch(() => {});
 
-    if (!ADMIN_IDS.includes(ctx.from.id)) {
+    if (!isAdmin(ctx.from?.id, ADMIN_IDS)) {
       return ctx.reply('❌ *Menu ini khusus admin.*', {
         parse_mode: 'Markdown'
       });
@@ -8499,7 +8499,7 @@ bot.action('admin_res_target_toggle', async (ctx) => {
   try {
     await ctx.answerCbQuery().catch(() => {});
 
-    if (!ADMIN_IDS.includes(ctx.from.id)) {
+    if (!isAdmin(ctx.from?.id, ADMIN_IDS)) {
       return ctx.reply('❌ *Menu ini khusus admin.*', {
         parse_mode: 'Markdown'
       });
@@ -8523,7 +8523,7 @@ bot.action('admin_res_target_min30_inc', async (ctx) => {
   try {
     await ctx.answerCbQuery().catch(() => {});
 
-    if (!ADMIN_IDS.includes(ctx.from.id)) {
+    if (!isAdmin(ctx.from?.id, ADMIN_IDS)) {
       return ctx.reply('❌ *Menu ini khusus admin.*', {
         parse_mode: 'Markdown'
       });
@@ -8550,7 +8550,7 @@ bot.action('admin_res_target_min30_dec', async (ctx) => {
   try {
     await ctx.answerCbQuery().catch(() => {});
 
-    if (!ADMIN_IDS.includes(ctx.from.id)) {
+    if (!isAdmin(ctx.from?.id, ADMIN_IDS)) {
       return ctx.reply('❌ *Menu ini khusus admin.*', {
         parse_mode: 'Markdown'
       });
@@ -8577,7 +8577,7 @@ bot.action('admin_res_target_days_inc', async (ctx) => {
   try {
     await ctx.answerCbQuery().catch(() => {});
 
-    if (!ADMIN_IDS.includes(ctx.from.id)) {
+    if (!isAdmin(ctx.from?.id, ADMIN_IDS)) {
       return ctx.reply('❌ *Menu ini khusus admin.*', {
         parse_mode: 'Markdown'
       });
@@ -8602,7 +8602,7 @@ bot.action('admin_res_target_days_dec', async (ctx) => {
   try {
     await ctx.answerCbQuery().catch(() => {});
 
-    if (!ADMIN_IDS.includes(ctx.from.id)) {
+    if (!isAdmin(ctx.from?.id, ADMIN_IDS)) {
       return ctx.reply('❌ *Menu ini khusus admin.*', {
         parse_mode: 'Markdown'
       });
@@ -8640,7 +8640,7 @@ bot.action('admin_reseller_bonus_menu', async (ctx) => {
   try {
     await ctx.answerCbQuery().catch(() => {});
 
-    if (!ADMIN_IDS.includes(ctx.from.id)) {
+    if (!isAdmin(ctx.from?.id, ADMIN_IDS)) {
       return ctx.reply('❌ *Menu ini khusus admin.*', {
         parse_mode: 'Markdown'
       });
@@ -8659,7 +8659,7 @@ bot.action('admin_res_bonus_nop', async (ctx) => {
 
 bot.action('admin_res_bonus_toggle', async (ctx) => {
   await ctx.answerCbQuery().catch(() => {});
-  if (!ADMIN_IDS.includes(ctx.from.id)) return ctx.reply('❌ *Menu ini khusus admin.*', { parse_mode: 'Markdown' });
+  if (!isAdmin(ctx.from?.id, ADMIN_IDS)) return ctx.reply('❌ *Menu ini khusus admin.*', { parse_mode: 'Markdown' });
   RESELLER_ACTIVE_BONUS_ENABLED = !RESELLER_ACTIVE_BONUS_ENABLED;
   updateResellerBonusVars({ RESELLER_ACTIVE_BONUS_ENABLED });
   await renderResellerBonusMenu(ctx, { edit: true });
@@ -8742,7 +8742,7 @@ for (const [tier, dayVar, amountVar] of [
 
 bot.action('admin_res_bonus_preview', async (ctx) => {
   await ctx.answerCbQuery().catch(() => {});
-  if (!ADMIN_IDS.includes(ctx.from.id)) return ctx.reply('❌ *Menu ini khusus admin.*', { parse_mode: 'Markdown' });
+  if (!isAdmin(ctx.from?.id, ADMIN_IDS)) return ctx.reply('❌ *Menu ini khusus admin.*', { parse_mode: 'Markdown' });
 
   try {
     const monthInfo = getMonthRange(-1);
@@ -8783,7 +8783,7 @@ bot.action('admin_res_bonus_preview', async (ctx) => {
 
 bot.action('admin_res_bonus_process', async (ctx) => {
   await ctx.answerCbQuery().catch(() => {});
-  if (!ADMIN_IDS.includes(ctx.from.id)) return ctx.reply('❌ *Menu ini khusus admin.*', { parse_mode: 'Markdown' });
+  if (!isAdmin(ctx.from?.id, ADMIN_IDS)) return ctx.reply('❌ *Menu ini khusus admin.*', { parse_mode: 'Markdown' });
 
   if (!RESELLER_ACTIVE_BONUS_ENABLED) {
     return ctx.reply('⚠️ Bonus reseller aktif sedang nonaktif. Aktifkan dulu dari menu bonus reseller.', { parse_mode: 'Markdown' });
