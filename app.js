@@ -6298,8 +6298,8 @@ function getBroadcastTargetsFromMenu(target) {
             const idStr = String(r.user_id);
             // Kecualikan reseller & admin
             if (resellerSet.has(idStr)) return;
-            if (adminIds.includes(idNum)) return;
-            if (idNum === MASTER_ID) return;
+            if (isAdmin(idNum, adminIds)) return;
+            if (isMaster(idNum, MASTER_ID)) return;
 
             set.add(idNum);
           });
@@ -6739,7 +6739,7 @@ bot.command('addressel', async (ctx) => {
     const requesterId = ctx.from.id;
 
     // Hanya admin yang bisa menjalankan perintah ini
-    if (!adminIds.includes(requesterId)) {
+    if (!isAdmin(requesterId, adminIds)) {
       return ctx.reply(NO_ACCESS_MESSAGE, { parse_mode: 'HTML' });
     }
 
@@ -6797,7 +6797,7 @@ bot.command('delressel', async (ctx) => {
     const requesterId = ctx.from.id;
 
     // Hanya admin yang bisa menjalankan perintah ini
-    if (!adminIds.includes(requesterId)) {
+    if (!isAdmin(requesterId, adminIds)) {
       return ctx.reply(NO_ACCESS_MESSAGE, { parse_mode: 'HTML' });
     }
 
@@ -7667,7 +7667,7 @@ bot.action('backup_db', async (ctx) => {
     const adminId = ctx.from.id;
 
     // Hanya admin yang bisa pakai
-    if (!adminIds.includes(adminId)) {
+    if (!isAdmin(adminId, adminIds)) {
       return ctx.reply('🚫 Kamu tidak memiliki izin untuk melakukan tindakan ini.');
     }
 
@@ -7694,7 +7694,7 @@ bot.action('expiry_reminder_menu', async (ctx) => {
   const adminId = ctx.from.id;
 
   // Hanya admin/master
-  if (!ADMIN_IDS.includes(adminId)) {
+  if (!isAdmin(adminId, ADMIN_IDS)) {
     return ctx.answerCbQuery('Tidak ada izin.', { show_alert: true });
   }
 
@@ -7758,7 +7758,7 @@ function buildTimezoneKeyboard() {
 // Buka menu timezone
 bot.action('timezone_menu', async (ctx) => {
   const adminId = ctx.from.id;
-  if (!ADMIN_IDS.includes(adminId)) {
+  if (!isAdmin(adminId, ADMIN_IDS)) {
     return ctx.answerCbQuery('Tidak ada izin.', { show_alert: true });
   }
 
@@ -7776,7 +7776,7 @@ bot.action('timezone_menu', async (ctx) => {
 
 async function setTimezoneAndRefresh(ctx, tzValue, label) {
   const adminId = ctx.from.id;
-  if (!ADMIN_IDS.includes(adminId)) {
+  if (!isAdmin(adminId, ADMIN_IDS)) {
     return ctx.answerCbQuery('Tidak ada izin.', { show_alert: true });
   }
 
@@ -7814,7 +7814,7 @@ bot.action('timezone_set_wit', (ctx) =>
 // ON/OFF
 bot.action('expiry_reminder_toggle', async (ctx) => {
   const adminId = ctx.from.id;
-  if (!ADMIN_IDS.includes(adminId)) {
+  if (!isAdmin(adminId, ADMIN_IDS)) {
     return ctx.answerCbQuery('Tidak ada izin.', { show_alert: true });
   }
 
@@ -7844,7 +7844,7 @@ bot.action('expiry_reminder_toggle', async (ctx) => {
 // Ubah jam/menit dan refresh tampilan
 async function adjustReminderTimeAndRefresh(ctx, deltaHour, deltaMinute) {
   const adminId = ctx.from.id;
-  if (!ADMIN_IDS.includes(adminId)) {
+  if (!isAdmin(adminId, ADMIN_IDS)) {
     return ctx.answerCbQuery('Tidak ada izin.', { show_alert: true });
   }
 
@@ -7896,7 +7896,7 @@ bot.action('expiry_minute_plus', (ctx) =>
 // Preset H-1 / H-2 / H-3
 async function setReminderDaysPreset(ctx, value) {
   const adminId = ctx.from.id;
-  if (!ADMIN_IDS.includes(adminId)) {
+  if (!isAdmin(adminId, ADMIN_IDS)) {
     return ctx.answerCbQuery('Tidak ada izin.', { show_alert: true });
   }
 
@@ -8387,7 +8387,7 @@ bot.action('monitor_panel', async (ctx) => {
 bot.action('list_res_mem', async (ctx) => {
   const adminId = ctx.from.id;
 
-  if (!adminIds.includes(adminId)) {
+  if (!isAdmin(adminId, adminIds)) {
     return ctx.reply('🚫 Anda tidak memiliki izin untuk menggunakan menu ini.');
   }
 
@@ -8418,7 +8418,7 @@ bot.action('admin_reseller_menu', async (ctx) => {
   const adminId = ctx.from.id;
 
   // Pastikan cuma admin yang bisa buka
-  if (!adminIds.includes(adminId)) {
+  if (!isAdmin(adminId, adminIds)) {
     return ctx
       .answerCbQuery('🚫 Khusus admin.', { show_alert: true })
       .catch(() => {});
@@ -8860,7 +8860,7 @@ bot.action('admin_res_bonus_process', async (ctx) => {
 bot.action('admin_server_menu', async (ctx) => {
   const adminId = ctx.from.id;
 
-  if (!adminIds.includes(adminId)) {
+  if (!isAdmin(adminId, adminIds)) {
     // Biar kalau ada user biasa iseng klik, dapat notif
     return ctx.answerCbQuery('🚫 Khusus admin.', { show_alert: true }).catch(() => {});
   }
@@ -9968,7 +9968,7 @@ bot.action('sales_summary', async (ctx) => {
 
   const userId = ctx.from.id;
 
-  if (!isResellerId(userId) && !adminIds.includes(userId)) {
+  if (!isResellerId(userId) && !isAdmin(userId, adminIds)) {
     return ctx.reply(
       '❌ Fitur <b>Penjualan Saya</b> hanya untuk reseller.',
       { parse_mode: 'HTML' }
@@ -11589,7 +11589,7 @@ const text = (ctx.message.text || '').trim();   // <-- TAMBAHKAN BARIS INI
 
       // ==== MODE PENGUMUMAN (MANUAL & TEMPLATE) DARI MENU 📢 ====
   const fromId = ctx.from && ctx.from.id;
-  if (fromId && adminIds.includes(fromId)) {
+  if (fromId && isAdmin(fromId, adminIds)) {
     const bState = broadcastSessions[fromId];
 
     // Kalau tidak ada sesi broadcast aktif → lanjut ke logika lain
