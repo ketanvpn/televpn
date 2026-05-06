@@ -7,12 +7,13 @@ Fase ini memecah handler command/callback besar dari `app.js` ke module terpisah
 Selesai:
 
 - Extract promo template callbacks ke `src/bot/handlers/promoTemplates.js`
+- Extract broadcast menu callbacks ke `src/bot/handlers/broadcastMenu.js`
 
 ## Target Aman Berikutnya
 
 1. Extract reseller target / bonus callbacks.
 2. Extract server management callbacks.
-3. Extract broadcast menu callbacks.
+3. Extract reseller/admin utility callbacks lainnya.
 
 ## Aturan
 
