@@ -24,6 +24,7 @@ Selesai:
 - Replace checks callback admin reseller target/bonus menu dengan access helpers
 - Replace checks callback broadcast menu flow dan ringkasan ke master dengan access helpers
 - Replace checks auto-backup master-only dan beberapa callback admin utility dengan access helpers
+- Replace checks callback server/promo/list menus dan filter admin list users dengan access helpers
 - Wiring di `app.js` tetap berada di posisi lama
 - Syntax check `app.js`, `callbackRateLimit.js`, `transactionLock.js`, `privateChat.js`, `license.js`, dan `access.js` bersih
 
@@ -58,6 +59,7 @@ Selesai:
 - Permission check callback admin reseller target/bonus sekarang memakai `isAdmin()`
 - Permission check callback broadcast menu sekarang memakai `isAdmin()` dan check master pakai `isMaster()`
 - Permission check auto-backup master-only sekarang memakai `isMaster()`; callback admin utility memakai `isAdmin()`
+- Permission check callback server/promo/list menu sekarang memakai `isAdmin()`; filter admin list users memakai `isAdmin()`
 
 ## Validasi
 

@@ -6871,7 +6871,7 @@ bot.on('photo', async (ctx) => {
 // === 🖼️ UPLOAD GAMBAR QRIS ===
 bot.action('upload_qris', async (ctx) => {
   const adminId = ctx.from.id;
-  if (!adminIds.includes(adminId)) {
+  if (!isAdmin(adminId, adminIds)) {
     return ctx.reply(NO_ACCESS_MESSAGE, { parse_mode: 'HTML' });
 }
 
@@ -8929,7 +8929,7 @@ bot.action('promo_template_menu', async (ctx) => {
     await ctx.answerCbQuery().catch(() => {});
   } catch (e) {}
 
-  if (!ctx.from || !adminIds.includes(ctx.from.id)) {
+  if (!isAdmin(ctx.from?.id, adminIds)) {
     return ctx.reply('🚫 Menu ini khusus admin.');
   }
 
@@ -8987,7 +8987,7 @@ async function getBotTagForPromo() {
 bot.action('promo_tpl_catalog', async (ctx) => {
   try { await ctx.answerCbQuery().catch(() => {}); } catch (e) {}
 
-  if (!ctx.from || !adminIds.includes(ctx.from.id)) return;
+  if (!isAdmin(ctx.from?.id, adminIds)) return;
 
   const botTag = await getBotTagForPromo();
 
@@ -9029,7 +9029,7 @@ bot.action('promo_tpl_catalog', async (ctx) => {
 bot.action('promo_tpl_reseller', async (ctx) => {
   try { await ctx.answerCbQuery().catch(() => {}); } catch (e) {}
 
-  if (!ctx.from || !adminIds.includes(ctx.from.id)) return;
+  if (!isAdmin(ctx.from?.id, adminIds)) return;
 
   const botTag = await getBotTagForPromo();
 
@@ -9062,7 +9062,7 @@ bot.action('promo_tpl_reseller', async (ctx) => {
 bot.action('promo_tpl_short', async (ctx) => {
   try { await ctx.answerCbQuery().catch(() => {}); } catch (e) {}
 
-  if (!ctx.from || !adminIds.includes(ctx.from.id)) return;
+  if (!isAdmin(ctx.from?.id, adminIds)) return;
 
   const botTag = await getBotTagForPromo();
 
@@ -9091,7 +9091,7 @@ bot.action('promo_tpl_short', async (ctx) => {
 bot.action('promo_tpl_kaisar', async (ctx) => {
   try { await ctx.answerCbQuery().catch(() => {}); } catch (e) {}
 
-  if (!ctx.from || !adminIds.includes(ctx.from.id)) return;
+  if (!isAdmin(ctx.from?.id, adminIds)) return;
 
   const botTag = await getBotTagForPromo();
 
@@ -9127,7 +9127,7 @@ bot.action('promo_tpl_kaisar', async (ctx) => {
 bot.action('list_reseller', async (ctx) => {
   const adminId = ctx.from.id;
 
-  if (!adminIds.includes(adminId)) {
+  if (!isAdmin(adminId, adminIds)) {
     return ctx.reply('🚫 Anda tidak memiliki izin untuk menggunakan menu ini.');
   }
 
@@ -9200,7 +9200,7 @@ bot.action('list_member', async (ctx) => {
   const adminId = ctx.from.id;
 
   // Pakai ADMIN_IDS (array angka) untuk cek admin
-  if (!ADMIN_IDS.includes(adminId)) {
+  if (!isAdmin(adminId, ADMIN_IDS)) {
     return ctx.reply('🚫 Anda tidak memiliki izin untuk menggunakan menu ini.');
   }
 
@@ -9234,7 +9234,7 @@ bot.action('list_member', async (ctx) => {
     const memberUsers = allUsers.filter((u) => {
       const uidStr = String(u.user_id);
       if (resellerSet.has(uidStr)) return false;                // buang reseller
-      if (ADMIN_IDS.includes(Number(u.user_id))) return false;  // buang admin
+      if (isAdmin(Number(u.user_id), ADMIN_IDS)) return false;  // buang admin
       return true;
     });
 
@@ -9280,7 +9280,7 @@ const LIST_USERS_PAGE_SIZE = 40; // Ubah kalau mau lebih/kurang per halaman
 async function renderAllUsersPage(ctx, page, editMessage) {
   try {
     const adminId = ctx.from?.id;
-    if (!adminId || !ADMIN_IDS.includes(adminId)) {
+    if (!isAdmin(adminId, ADMIN_IDS)) {
       // kalau bukan admin, jangan apa-apa
       if (!editMessage) {
         await ctx.reply('🚫 Anda tidak memiliki izin untuk menggunakan menu ini.');
@@ -9348,7 +9348,7 @@ async function renderAllUsersPage(ctx, page, editMessage) {
 
       // Tipe user: Admin / Reseller / Member (pakai singkatan)
       let tipeShort = 'MEM';
-      if (ADMIN_IDS.includes(uidNum)) {
+      if (isAdmin(uidNum, ADMIN_IDS)) {
         tipeShort = 'ADM';
       } else if (resellerSet.has(uidStr)) {
         tipeShort = 'RES';
@@ -9612,7 +9612,7 @@ bot.action('tambah_saldo', async (ctx) => {
   const adminId = ctx.from.id;
 
   // Pastikan hanya admin
-  if (!adminIds.includes(adminId)) {
+  if (!isAdmin(adminId, adminIds)) {
     return toastError(ctx, 'Kamu tidak memiliki izin');
   }
 
