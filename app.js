@@ -109,6 +109,9 @@ const { handleTextAddSaldoFlow } = require('./src/bot/handlers/textAddSaldoFlow'
 const { insertTransaction } = require('./src/repositories/transactionRepository');
 const { getUserSaldoById } = require('./src/repositories/userRepository');
 const {
+  getAccountsWithServerPriceByUserCreatedBetween,
+} = require('./src/repositories/accountRepository');
+const {
   getQrisPaymentByInvoiceId,
   getLatestQrisPaymentByInvoiceId,
   getQrisPaymentStatusByInvoiceId,
@@ -118,6 +121,7 @@ const {
   listRecentPendingQrisPayments,
   insertPendingQrisPayment,
 } = require('./src/repositories/qrisPaymentRepository');
+const { getResellerBonusLogByUserAndMonth } = require('./src/repositories/resellerRepository');
 
 const trialFile = TRIAL_DB_PATH;
 const trialConfigFile = TRIAL_CONFIG_PATH;
@@ -1131,19 +1135,13 @@ function pickHighestResellerActiveBonusTier(activeDays) {
 }
 
 async function hasProcessedResellerActiveBonus(userId, monthKey) {
-  return await new Promise((resolve) => {
-    db.get(
-      `SELECT id FROM reseller_bonus_logs WHERE user_id = ? AND period_month = ? LIMIT 1`,
-      [userId, monthKey],
-      (err, row) => {
-        if (err) {
-          logger.error('Gagal cek reseller_bonus_logs:', err.message || err);
-          return resolve(false);
-        }
-        resolve(!!row);
-      }
-    );
-  });
+  try {
+    const row = await getResellerBonusLogByUserAndMonth(db, userId, monthKey);
+    return !!row;
+  } catch (err) {
+    logger.error('Gagal cek reseller_bonus_logs:', err.message || err);
+    return false;
+  }
 }
 
 async function getResellerActiveBonusStats(userId, options = {}) {
@@ -1176,24 +1174,14 @@ async function getResellerActiveBonusStats(userId, options = {}) {
   const flagStatus = await getUserFlagStatus(uid);
   base.flaggedStatus = flagStatus;
 
-  const rows = await new Promise((resolve) => {
-    db.all(
-      `SELECT a.created_at, a.expires_at, a.type, a.server_id, s.harga
-       FROM accounts a
-       LEFT JOIN Server s ON s.id = a.server_id
-       WHERE a.user_id = ?
-         AND a.created_at >= ?
-         AND a.created_at < ?
-       ORDER BY a.created_at ASC`,
-      [uid, monthRange.startMs, monthRange.endMs],
-      (err, rows) => {
-        if (err) {
-          logger.error('Gagal ambil stats bonus reseller:', err.message || err);
-          return resolve([]);
-        }
-        resolve(rows || []);
-      }
-    );
+  const rows = await getAccountsWithServerPriceByUserCreatedBetween(
+    db,
+    uid,
+    monthRange.startMs,
+    monthRange.endMs
+  ).catch((err) => {
+    logger.error('Gagal ambil stats bonus reseller:', err.message || err);
+    return [];
   });
 
   const dayMap = new Map();
@@ -1244,13 +1232,7 @@ async function getResellerActiveBonusStats(userId, options = {}) {
   base.nextTier = tiers.find((tier) => tier.minDays > base.validActiveDays) || null;
   base.processed = await hasProcessedResellerActiveBonus(uid, monthRange.monthKey);
   if (base.processed) {
-    const row = await new Promise((resolve) => {
-      db.get(
-        `SELECT bonus_amount FROM reseller_bonus_logs WHERE user_id = ? AND period_month = ? LIMIT 1`,
-        [uid, monthRange.monthKey],
-        (err, row) => resolve(row || null)
-      );
-    });
+    const row = await getResellerBonusLogByUserAndMonth(db, uid, monthRange.monthKey).catch(() => null);
     base.processedAmount = Number(row?.bonus_amount || 0);
   }
 

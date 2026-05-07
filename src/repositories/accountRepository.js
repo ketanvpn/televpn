@@ -47,6 +47,20 @@ async function getAccountsByUserCreatedBetween(db, userId, startTs, endTs) {
   );
 }
 
+async function getAccountsWithServerPriceByUserCreatedBetween(db, userId, startTs, endTs) {
+  return getAll(
+    db,
+    `SELECT a.created_at, a.expires_at, a.type, a.server_id, s.harga
+     FROM accounts a
+     LEFT JOIN Server s ON s.id = a.server_id
+     WHERE a.user_id = ?
+       AND a.created_at >= ?
+       AND a.created_at < ?
+     ORDER BY a.created_at ASC`,
+    [userId, startTs, endTs]
+  );
+}
+
 async function getAccountById(db, accountId) {
   return getOne(
     db,
@@ -84,6 +98,7 @@ module.exports = {
   getTotalExpiredAccounts,
   getTopResellerStatsSince,
   getAccountsByUserCreatedBetween,
+  getAccountsWithServerPriceByUserCreatedBetween,
   getAccountById,
   getAccountDetailWithServerById,
   getLatestAccountByIdentity,
