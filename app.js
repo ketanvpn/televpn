@@ -17,6 +17,7 @@ const { createQrisPaymentFinalizeService } = require('./src/services/qrisPayment
 const { createQrisNotificationService } = require('./src/services/qrisNotificationService');
 const { createQrisInvoiceBuilderService } = require('./src/services/qrisInvoiceBuilderService');
 const { createQrisPollingService } = require('./src/services/qrisPollingService');
+const { createQrisPendingDepositMonitorService } = require('./src/services/qrisPendingDepositMonitorService');
 const {
   buildStaticQrisImageUrl,
   buildDynamicQrisPayload,
@@ -559,6 +560,14 @@ const qrisPollingService = createQrisPollingService({
   calculateTopupBonus,
   applyQrisTopupBonus,
   notifyTopupSuccess,
+});
+const qrisPendingDepositMonitorService = createQrisPendingDepositMonitorService({
+  globalState: global,
+  fetchGopayTransactions,
+  findMatchingSettlementTransaction,
+  markDepositExpired,
+  creditDeposit,
+  qrisPaymentTimeoutMin: QRIS_PAYMENT_TIMEOUT_MIN,
 });
 // ====================== END SECTION: PAYMENT CONFIG & QRIS ===================
 
@@ -13454,36 +13463,7 @@ async function createQrisInvoice(baseAmount, noteOrReference, forcedUniqueSuffix
 }
 
 async function checkQRISStatus() {
-  try {
-    const entries = Object.entries(global.pendingDeposits || {}).filter(
-      ([, d]) => d.status === 'pending'
-    );
-    if (entries.length === 0) return;
-
-    const timeoutMin = Number(QRIS_PAYMENT_TIMEOUT_MIN || 10);
-    const transactions = await fetchGopayTransactions();
-
-    for (const [uniqueCode, deposit] of entries) {
-      const expiredAt = deposit.expiresAt || (deposit.timestamp + (timeoutMin * 60 * 1000));
-      if (Date.now() > expiredAt) {
-        try {
-          if (deposit.qrMessageId) {
-            await bot.telegram.deleteMessage(deposit.userId, deposit.qrMessageId);
-          }
-        } catch (e) {}
-        await markDepositExpired(uniqueCode, bot, db, logger);
-        continue;
-      }
-
-      const matched = findMatchingSettlementTransaction(transactions, deposit.amount);
-      if (matched) {
-        await creditDeposit(uniqueCode, bot, db, logger);
-        logger.info(`✅ QRIS paid: ${uniqueCode} amount=${deposit.amount}`);
-      }
-    }
-  } catch (error) {
-    logger.error('Error in checkQRISStatus:', error?.message || error);
-  }
+  return qrisPendingDepositMonitorService.checkQRISStatus(bot, db, logger);
 }
 
 // Jalankan auto check (pakai interval dari vars.json)
