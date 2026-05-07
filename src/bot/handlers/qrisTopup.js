@@ -16,6 +16,8 @@ function registerQrisTopupHandlers(bot, deps) {
     qrisPath,
     NAMA_STORE,
     ADMIN_USERNAME,
+    db,
+    getQrisPaymentStatusByInvoiceId,
   } = deps;
 
   bot.command('topupqris', async (ctx) => {
@@ -70,6 +72,49 @@ function registerQrisTopupHandlers(bot, deps) {
       await ctx.reply('✅ Topup dibatalkan.', {
         parse_mode: 'HTML',
       });
+    }
+  });
+
+  bot.action(/^qris_status:(.+)$/i, async (ctx) => {
+    try {
+      const invoiceId = String(ctx.match[1] || '').trim();
+      if (!invoiceId) return ctx.answerCbQuery('Invoice kosong');
+      await ctx.answerCbQuery('Mengecek...', { show_alert: false }).catch(() => {});
+
+      const row = await getQrisPaymentStatusByInvoiceId(db, invoiceId).catch(() => null);
+      if (!row) {
+        await ctx.answerCbQuery('Invoice tidak ditemukan', { show_alert: true }).catch(() => {});
+        return;
+      }
+
+      const s = String(row.status || 'pending').toUpperCase();
+      const msg =
+        `🧾 <b>Status QRIS</b>\n` +
+        `━━━━━━━━━━━━━━━━\n` +
+        `Invoice : <code>${invoiceId}</code>\n` +
+        `Status  : <b>${s}</b>\n` +
+        `━━━━━━━━━━━━━━━━\n` +
+        `Catatan: Saldo masuk otomatis saat status <b>PAID</b>.`;
+
+      try {
+        await ctx.editMessageCaption(msg, {
+          parse_mode: 'HTML',
+          reply_markup: {
+            inline_keyboard: [
+              [{ text: '🔎 Refresh Status', callback_data: `qris_status:${invoiceId}` }],
+              [{ text: '🏠 Menu Utama', callback_data: 'send_main_menu' }],
+            ],
+          },
+        });
+      } catch {
+        await ctx.answerCbQuery('Tidak bisa edit pesan ini. Buat QRIS baru / buka pesan QR terakhir.', { show_alert: true }).catch(() => {});
+      }
+
+      await ctx.answerCbQuery('OK').catch(() => {});
+    } catch {
+      try {
+        await ctx.answerCbQuery('Gagal cek status', { show_alert: true });
+      } catch {}
     }
   });
 
