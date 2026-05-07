@@ -126,6 +126,7 @@ const {
   getQrisPaymentById,
   listRecentPendingQrisPayments,
   insertPendingQrisPayment,
+  insertQrisPaymentRecord,
 } = require('./src/repositories/qrisPaymentRepository');
 const {
   getResellerBonusLogByUserAndMonth,
@@ -2476,76 +2477,49 @@ async function creditDeposit(uniqueCode, bot, db, logger, matchedTx = null) {
             return resolve(false);
           }
 
-          db.run(
-            `UPDATE users SET saldo = saldo + ? WHERE user_id = ?`,
-            [credit, d.userId],
-            (err2) => {
-              if (err2) {
-                db.run('ROLLBACK');
-                return reject(err2);
+          addUserSaldo(db, d.userId, credit)
+            .then(() => insertTransaction(db, {
+              userId: d.userId,
+              amount: credit,
+              type: 'qris_auto_topup',
+              referenceId: uniqueCode,
+              timestamp: now,
+            }))
+            .then(async () => {
+              if (!providerPayloadJson) {
+                return db.run('COMMIT', (err4) => (err4 ? reject(err4) : resolve(true)));
               }
 
-              db.run(
-                `INSERT INTO transactions (user_id, amount, type, reference_id, timestamp)
-                 VALUES (?, ?, ?, ?, ?)`,
-                [d.userId, credit, 'qris_auto_topup', uniqueCode, now],
-                (err3) => {
-                  if (err3) {
-                    db.run('ROLLBACK');
-                    return reject(err3);
-                  }
-
-                  if (!providerPayloadJson) {
-                    return db.run('COMMIT', (err4) => (err4 ? reject(err4) : resolve(true)));
-                  }
-
-                  db.run(
-                    `INSERT INTO qris_payments (
-                      user_id,
-                      invoice_id,
-                      amount,
-                      base_amount,
-                      unique_suffix,
-                      status,
-                      created_at,
-                      paid_at,
-                      matched_at,
-                      provider_tx_id,
-                      provider_tx_time,
-                      provider_payment_type,
-                      provider_issuer,
-                      provider_status,
-                      provider_payload_json
-                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-                    [
-                      d.userId,
-                      uniqueCode,
-                      d.amount,
-                      credit,
-                      Number(d.amount || 0) - Number(credit || 0),
-                      'paid',
-                      Number(d.timestamp || now),
-                      parseProviderTransactionTime(providerTxTime) || now,
-                      now,
-                      providerTxId,
-                      providerTxTime ? String(providerTxTime) : null,
-                      providerPaymentType,
-                      providerIssuer,
-                      providerStatus,
-                      providerPayloadJson,
-                    ],
-                    (err4) => {
-                      if (err4 && !String(err4.message || '').includes('UNIQUE constraint failed: qris_payments.invoice_id')) {
-                        db.run('ROLLBACK');
-                        return reject(err4);
-                      }
-                      db.run('COMMIT', (err5) => (err5 ? reject(err5) : resolve(true)));
-                    }
-                  );
+              try {
+                await insertQrisPaymentRecord(db, {
+                  user_id: d.userId,
+                  invoice_id: uniqueCode,
+                  amount: d.amount,
+                  base_amount: credit,
+                  unique_suffix: Number(d.amount || 0) - Number(credit || 0),
+                  status: 'paid',
+                  created_at: Number(d.timestamp || now),
+                  paid_at: parseProviderTransactionTime(providerTxTime) || now,
+                  matched_at: now,
+                  provider_tx_id: providerTxId,
+                  provider_tx_time: providerTxTime ? String(providerTxTime) : null,
+                  provider_payment_type: providerPaymentType,
+                  provider_issuer: providerIssuer,
+                  provider_status: providerStatus,
+                  provider_payload_json: providerPayloadJson,
+                });
+              } catch (err4) {
+                if (!String(err4.message || '').includes('UNIQUE constraint failed: qris_payments.invoice_id')) {
+                  db.run('ROLLBACK');
+                  return reject(err4);
                 }
-              );
-            }
-          );
+              }
+              db.run('COMMIT', (err5) => (err5 ? reject(err5) : resolve(true)));
+            })
+            .catch((err2) => {
+              db.run('ROLLBACK');
+              reject(err2);
+            });
         }
       );
     });
@@ -14003,20 +13977,16 @@ async function checkQRISStatus() {
 
 
 async function recordAccountTransaction(userId, type) {
-  return new Promise((resolve, reject) => {
-    const referenceId = `account-${type}-${userId}-${Date.now()}`;
-    db.run(
-      'INSERT INTO transactions (user_id, type, reference_id, timestamp) VALUES (?, ?, ?, ?)',
-      [userId, type, referenceId, Date.now()],
-      (err) => {
-        if (err) {
-          logger.error('Error recording account transaction:', err.message);
-          reject(err);
-        } else {
-          resolve();
-        }
-      }
-    );
+  const referenceId = `account-${type}-${userId}-${Date.now()}`;
+  return insertTransaction(db, {
+    userId,
+    amount: null,
+    type,
+    referenceId,
+    timestamp: Date.now(),
+  }).catch((err) => {
+    logger.error('Error recording account transaction:', err.message);
+    throw err;
   });
 }
 function upsertAccount(userId, username, type, serverId, expDays) {

@@ -121,6 +121,47 @@ async function insertPendingQrisPayment(db, payload) {
   );
 }
 
+async function insertQrisPaymentRecord(db, payload) {
+  const p = payload || {};
+  return run(
+    db,
+    `INSERT INTO qris_payments (
+       user_id,
+       invoice_id,
+       amount,
+       base_amount,
+       unique_suffix,
+       status,
+       created_at,
+       paid_at,
+       matched_at,
+       provider_tx_id,
+       provider_tx_time,
+       provider_payment_type,
+       provider_issuer,
+       provider_status,
+       provider_payload_json
+     ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [
+      p.user_id,
+      p.invoice_id,
+      p.amount,
+      p.base_amount,
+      p.unique_suffix,
+      p.status,
+      p.created_at,
+      p.paid_at || null,
+      p.matched_at || null,
+      p.provider_tx_id || null,
+      p.provider_tx_time || null,
+      p.provider_payment_type || null,
+      p.provider_issuer || null,
+      p.provider_status || null,
+      p.provider_payload_json || null,
+    ]
+  );
+}
+
 module.exports = {
   getQrisPaymentByInvoiceId,
   getQrisPaymentById,
@@ -132,4 +173,5 @@ module.exports = {
   markQrisPaymentAsPaidById,
   listRecentPendingQrisPayments,
   insertPendingQrisPayment,
+  insertQrisPaymentRecord,
 };
