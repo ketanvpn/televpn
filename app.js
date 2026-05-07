@@ -460,6 +460,12 @@ const GOPAY_API_BASE_URL =
   vars.GOPAY_BACKEND_BASE_URL ||
   'https://api-gopay.autoftbot.com';
 
+const gopayQrisApi = createGopayQrisApi({
+  axios,
+  getApiKey: getGopayApiKey,
+  baseUrl: GOPAY_API_BASE_URL,
+});
+
 // Timezone global dipakai lintas helper (scheduler/report/menu)
 let TIME_ZONE = vars.TIME_ZONE || 'Asia/Jayapura';
 
@@ -582,31 +588,16 @@ function buildDynamicQrisPayload(baseQrString, amount) {
 }
 
 async function fetchGopayTransactions() {
-  const gopayApi = createGopayQrisApi({
-    axios,
-    getApiKey: getGopayApiKey,
-    baseUrl: GOPAY_API_BASE_URL,
-  });
-  return gopayApi.fetchTransactions();
+  return gopayQrisApi.fetchTransactions();
 }
 
 
 async function generateGopayQris(amount) {
-  const gopayApi = createGopayQrisApi({
-    axios,
-    getApiKey: getGopayApiKey,
-    baseUrl: GOPAY_API_BASE_URL,
-  });
-  return gopayApi.generateQris(amount);
+  return gopayQrisApi.generateQris(amount);
 }
 
 async function fetchGopayQrisStatus(transactionId) {
-  const gopayApi = createGopayQrisApi({
-    axios,
-    getApiKey: getGopayApiKey,
-    baseUrl: GOPAY_API_BASE_URL,
-  });
-  return gopayApi.fetchQrisStatus(transactionId);
+  return gopayQrisApi.fetchQrisStatus(transactionId);
 }
 
 async function checkQrisInvoiceStatus(invoiceId, billedAmount, createdAt) {
