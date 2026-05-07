@@ -4,6 +4,10 @@ async function getQrisPaymentByInvoiceId(db, invoiceId) {
   return getOne(db, 'SELECT * FROM qris_payments WHERE invoice_id = ? LIMIT 1', [invoiceId]);
 }
 
+async function getQrisPaymentById(db, id) {
+  return getOne(db, 'SELECT id, status, paid_at FROM qris_payments WHERE id = ? LIMIT 1', [id]);
+}
+
 async function getLatestQrisPaymentByInvoiceId(db, invoiceId) {
   return getOne(db, 'SELECT * FROM qris_payments WHERE invoice_id = ? ORDER BY id DESC LIMIT 1', [invoiceId]);
 }
@@ -37,6 +41,35 @@ async function markQrisPaymentStatusById(db, id, status, paidAt = null) {
     return run(db, 'UPDATE qris_payments SET status=?, paid_at=? WHERE id=?', [status, paidAt, id]);
   }
   return run(db, 'UPDATE qris_payments SET status=? WHERE id=?', [status, id]);
+}
+
+async function markQrisPaymentAsPaidById(db, id, payload) {
+  const p = payload || {};
+  return run(
+    db,
+    `UPDATE qris_payments
+       SET status = 'paid',
+           paid_at = ?,
+           matched_at = ?,
+           provider_tx_id = ?,
+           provider_tx_time = ?,
+           provider_payment_type = ?,
+           provider_issuer = ?,
+           provider_status = ?,
+           provider_payload_json = ?
+     WHERE id = ? AND status != 'paid'`,
+    [
+      p.paid_at,
+      p.matched_at,
+      p.provider_tx_id,
+      p.provider_tx_time,
+      p.provider_payment_type,
+      p.provider_issuer,
+      p.provider_status,
+      p.provider_payload_json,
+      id,
+    ]
+  );
 }
 
 async function listRecentPendingQrisPayments(db, cutoff, limit = 50) {
@@ -90,11 +123,13 @@ async function insertPendingQrisPayment(db, payload) {
 
 module.exports = {
   getQrisPaymentByInvoiceId,
+  getQrisPaymentById,
   getLatestQrisPaymentByInvoiceId,
   getQrisPaymentStatusByInvoiceId,
   countPendingQrisPayments,
   getLatestPendingQrisPaymentByUserId,
   markQrisPaymentStatusById,
+  markQrisPaymentAsPaidById,
   listRecentPendingQrisPayments,
   insertPendingQrisPayment,
 };

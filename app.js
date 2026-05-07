@@ -119,6 +119,8 @@ const {
   countPendingQrisPayments,
   getLatestPendingQrisPaymentByUserId,
   markQrisPaymentStatusById,
+  markQrisPaymentAsPaidById,
+  getQrisPaymentById,
   listRecentPendingQrisPayments,
   insertPendingQrisPayment,
 } = require('./src/repositories/qrisPaymentRepository');
@@ -1598,13 +1600,8 @@ async function finalizeQrisPayment({ paymentRow, matchedTx, transactionType = 'q
       db.run('BEGIN IMMEDIATE TRANSACTION', (err) => {
         if (err) return reject(err);
 
-        db.get(
-          'SELECT id, status, paid_at FROM qris_payments WHERE id = ? LIMIT 1',
-          [paymentId],
-          (err0, current) => {
-            if (err0) {
-              return db.run('ROLLBACK', () => reject(err0));
-            }
+        getQrisPaymentById(db, paymentId)
+          .then((current) => {
             if (!current) {
               return db.run('ROLLBACK', () => reject(new Error('Invoice QRIS tidak ditemukan')));
             }
@@ -1612,34 +1609,18 @@ async function finalizeQrisPayment({ paymentRow, matchedTx, transactionType = 'q
               return db.run('ROLLBACK', () => resolve({ applied: false, alreadyPaid: true, paidAt: current.paid_at || null }));
             }
 
-            db.run(
-              `UPDATE qris_payments
-                 SET status = 'paid',
-                     paid_at = ?,
-                     matched_at = ?,
-                     provider_tx_id = ?,
-                     provider_tx_time = ?,
-                     provider_payment_type = ?,
-                     provider_issuer = ?,
-                     provider_status = ?,
-                     provider_payload_json = ?
-               WHERE id = ? AND status != 'paid'`,
-              [
-                paidAt,
-                matchedAt,
-                tx.transaction_id || tx.id || null,
-                tx.transaction_time || tx.time || null,
-                tx.payment_type || 'qris',
-                tx.issuer || 'gopay',
-                tx.transaction_status || tx.status || null,
-                providerPayloadJson,
-                paymentId,
-              ],
-              function (err1) {
-                if (err1) {
-                  return db.run('ROLLBACK', () => reject(err1));
-                }
-                if (!this.changes) {
+            markQrisPaymentAsPaidById(db, paymentId, {
+              paid_at: paidAt,
+              matched_at: matchedAt,
+              provider_tx_id: tx.transaction_id || tx.id || null,
+              provider_tx_time: tx.transaction_time || tx.time || null,
+              provider_payment_type: tx.payment_type || 'qris',
+              provider_issuer: tx.issuer || 'gopay',
+              provider_status: tx.transaction_status || tx.status || null,
+              provider_payload_json: providerPayloadJson,
+            })
+              .then((upd) => {
+                if (!upd.changes) {
                   return db.run('ROLLBACK', () => resolve({ applied: false, alreadyPaid: true, paidAt: current.paid_at || null }));
                 }
 
@@ -1671,10 +1652,10 @@ async function finalizeQrisPayment({ paymentRow, matchedTx, transactionType = 'q
                     );
                   }
                 );
-              }
-            );
-          }
-        );
+              })
+              .catch((err1) => db.run('ROLLBACK', () => reject(err1)));
+          })
+          .catch((err0) => db.run('ROLLBACK', () => reject(err0)));
       });
     });
   });
