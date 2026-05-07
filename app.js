@@ -106,6 +106,7 @@ const { sendAccountPurchaseGroupNotif } = require('./src/bot/handlers/purchaseGr
 const { handleTextAddServerFlow } = require('./src/bot/handlers/textAddServerFlow');
 const { handleTextResellerAddServerFlow } = require('./src/bot/handlers/textResellerAddServerFlow');
 const { handleTextAddSaldoFlow } = require('./src/bot/handlers/textAddSaldoFlow');
+const { insertTransaction } = require('./src/repositories/transactionRepository');
 
 const trialFile = TRIAL_DB_PATH;
 const trialConfigFile = TRIAL_CONFIG_PATH;
@@ -2819,19 +2820,15 @@ db.run(`CREATE TABLE IF NOT EXISTS transactions (
 });
 
 function recordSaldoTransaction(userId, amount, type, referenceId) {
-  db.run(
-    `INSERT INTO transactions (user_id, amount, type, reference_id, timestamp)
-     VALUES (?, ?, ?, ?, ?)`,
-    [userId, amount, type, referenceId || null, Date.now()],
-    (err) => {
-      if (err) {
-        logger.error(
-          'Kesalahan mencatat transaksi saldo:',
-          err.message
-        );
-      }
-    }
-  );
+  insertTransaction(db, {
+    userId,
+    amount,
+    type,
+    referenceId: referenceId || null,
+    timestamp: Date.now(),
+  }).catch((err) => {
+    logger.error('Kesalahan mencatat transaksi saldo:', err.message);
+  });
 }
 
 db.run(`CREATE TABLE IF NOT EXISTS accounts (
@@ -13780,17 +13777,20 @@ async function processAccountPayment(userId, amount, type, action, serverId, use
         }
 
         // 2) Catat transaksi saldo (kalau gagal, saldo sudah terpotong, jadi kita tetap resolve tapi log error)
-        db.run(
-          'INSERT INTO transactions (user_id, amount, type, reference_id, timestamp) VALUES (?, ?, ?, ?, ?)',
-          [userId, -amount, trxType, refId, Date.now()],
-          (err2) => {
-            if (err2) {
-              logger.error('⚠️ Gagal mencatat transaksi saldo pembelian akun:', err2.message);
-              // saldo sudah berkurang, jadi jangan rollback, cukup log
-            }
+        insertTransaction(db, {
+          userId,
+          amount: -amount,
+          type: trxType,
+          referenceId: refId,
+          timestamp: Date.now(),
+        })
+          .catch((err2) => {
+            logger.error('⚠️ Gagal mencatat transaksi saldo pembelian akun:', err2.message);
+            // saldo sudah berkurang, jadi jangan rollback, cukup log
+          })
+          .finally(() => {
             resolve();
-          }
-        );
+          });
       }
     );
   });
