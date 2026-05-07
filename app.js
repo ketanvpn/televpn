@@ -107,7 +107,8 @@ const { handleTextAddServerFlow } = require('./src/bot/handlers/textAddServerFlo
 const { handleTextResellerAddServerFlow } = require('./src/bot/handlers/textResellerAddServerFlow');
 const { handleTextAddSaldoFlow } = require('./src/bot/handlers/textAddSaldoFlow');
 const { insertTransaction } = require('./src/repositories/transactionRepository');
-const { getUserSaldoById } = require('./src/repositories/userRepository');
+const { getUserSaldoById, addUserSaldo } = require('./src/repositories/userRepository');
+const { run } = require('./src/repositories/sqliteRepo');
 const {
   getAccountsWithServerPriceByUserCreatedBetween,
 } = require('./src/repositories/accountRepository');
@@ -121,7 +122,10 @@ const {
   listRecentPendingQrisPayments,
   insertPendingQrisPayment,
 } = require('./src/repositories/qrisPaymentRepository');
-const { getResellerBonusLogByUserAndMonth } = require('./src/repositories/resellerRepository');
+const {
+  getResellerBonusLogByUserAndMonth,
+  insertResellerBonusLog,
+} = require('./src/repositories/resellerRepository');
 
 const trialFile = TRIAL_DB_PATH;
 const trialConfigFile = TRIAL_CONFIG_PATH;
@@ -1273,54 +1277,42 @@ async function grantResellerActiveBonus({ userId, monthKey, activeDays, bonusAmo
     return { ok: false, reason: 'invalid_params' };
   }
 
-  return await new Promise((resolve, reject) => {
-    db.serialize(() => {
-      db.run('BEGIN IMMEDIATE TRANSACTION', (err) => {
-        if (err) return reject(err);
+  try {
+    await run(db, 'BEGIN IMMEDIATE TRANSACTION');
 
-        db.get(
-          `SELECT id FROM reseller_bonus_logs WHERE user_id = ? AND period_month = ? LIMIT 1`,
-          [uid, monthKey],
-          (err0, existing) => {
-            if (err0) return db.run('ROLLBACK', () => reject(err0));
-            if (existing) return db.run('ROLLBACK', () => resolve({ ok: false, reason: 'already_processed' }));
+    const existing = await getResellerBonusLogByUserAndMonth(db, uid, monthKey);
+    if (existing) {
+      await run(db, 'ROLLBACK');
+      return { ok: false, reason: 'already_processed' };
+    }
 
-            db.run(
-              `UPDATE users SET saldo = saldo + ? WHERE user_id = ?`,
-              [amount, uid],
-              function (err1) {
-                if (err1) return db.run('ROLLBACK', () => reject(err1));
-                if (!this.changes) return db.run('ROLLBACK', () => resolve({ ok: false, reason: 'user_not_found' }));
+    const saldoRes = await addUserSaldo(db, uid, amount);
+    if (!saldoRes.changes) {
+      await run(db, 'ROLLBACK');
+      return { ok: false, reason: 'user_not_found' };
+    }
 
-                db.run(
-                  `INSERT INTO transactions (user_id, amount, type, reference_id, timestamp)
-                   VALUES (?, ?, ?, ?, ?)`,
-                  [uid, amount, 'reseller_active_bonus', refId, now],
-                  (err2) => {
-                    if (err2) return db.run('ROLLBACK', () => reject(err2));
+    await insertTransaction(db, uid, amount, 'reseller_active_bonus', refId, now);
 
-                    db.run(
-                      `INSERT INTO reseller_bonus_logs (
-                        user_id, period_month, active_days, bonus_amount, tier_label, processed_at, processed_by, note
-                      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
-                      [uid, monthKey, Number(activeDays || 0), amount, String(tierLabel || ''), now, adminId || null, 'Manual payout from admin menu'],
-                      (err3) => {
-                        if (err3) return db.run('ROLLBACK', () => reject(err3));
-                        db.run('COMMIT', (err4) => {
-                          if (err4) return reject(err4);
-                          resolve({ ok: true, refId });
-                        });
-                      }
-                    );
-                  }
-                );
-              }
-            );
-          }
-        );
-      });
+    await insertResellerBonusLog(db, {
+      user_id: uid,
+      period_month: monthKey,
+      active_days: Number(activeDays || 0),
+      bonus_amount: amount,
+      tier_label: String(tierLabel || ''),
+      processed_at: now,
+      processed_by: adminId || null,
+      note: 'Manual payout from admin menu',
     });
-  });
+
+    await run(db, 'COMMIT');
+    return { ok: true, refId };
+  } catch (err) {
+    try {
+      await run(db, 'ROLLBACK');
+    } catch (_) {}
+    throw err;
+  }
 }
 
 async function renderResellerBonusMenu(ctx, options = {}) {
