@@ -110,6 +110,7 @@ const {
 } = require('./src/bot/guards/access');
 const { registerPromoTemplateHandlers } = require('./src/bot/handlers/promoTemplates');
 const { registerBroadcastMenuHandlers } = require('./src/bot/handlers/broadcastMenu');
+const { registerQrisTopupHandlers } = require('./src/bot/handlers/qrisTopup');
 const { handleTextTrialOps } = require('./src/bot/handlers/textTrialOps');
 const { handleResellerUsernameOps } = require('./src/bot/handlers/textResellerOps');
 const { handleTextAccountInputSteps } = require('./src/bot/handlers/textAccountInputSteps');
@@ -164,6 +165,8 @@ const {
 
 const trialFile = TRIAL_DB_PATH;
 const trialConfigFile = TRIAL_CONFIG_PATH;
+const qrisPath = path.join(__dirname, 'qris.jpg');
+const lastMenuMsgId = new Map();
 
 // Konfigurasi default trial
 const DEFAULT_TRIAL_CONFIG = {
@@ -5979,97 +5982,29 @@ registerBroadcastMenuHandlers(bot, {
 });
 
 // ============================================================================
-// SECTION: PAYMENT - TRIGGER TOPUP OTOMATIS (COMMAND & BUTTON)
-// - /topupqris      : user ketik command manual
-// - topupqris_btn   : user klik tombol di menu utama
+// SECTION: PAYMENT - HANDLERS TOPUP QRIS (modular)
 // ============================================================================
 let processQrisTopupInvoice;
 
-bot.command('topupqris', async (ctx) => {
-  await openTopupQrisMenu(ctx);
+registerQrisTopupHandlers(bot, {
+  logger,
+  userState,
+  isAdmin,
+  adminIds,
+  NO_ACCESS_MESSAGE,
+  openTopupQrisMenu,
+  getProcessQrisTopupInvoice: () => processQrisTopupInvoice,
+  sendCleanMenu,
+  path,
+  fs,
+  axios,
+  lastMenuMsgId,
+  keyboardNomor: keyboard_nomor,
+  qrisPath,
+  NAMA_STORE,
+  ADMIN_USERNAME,
 });
-
-// User klik tombol di menu utama
-bot.action('topupqris_btn', async (ctx) => {
-  await ctx.answerCbQuery().catch(() => {});
-  await openTopupQrisMenu(ctx);
-});
-
-bot.action('qris_topup_confirm_yes', async (ctx) => {
-  await ctx.answerCbQuery().catch(() => {});
-
-  const chatId = ctx.chat.id;
-  const state = userState[chatId];
-
-  if (!state || state.step !== 'qris_topup_confirm' || !state.baseAmount) {
-    await ctx.reply('⚠️ Sesi topup sudah tidak aktif. Silakan mulai lagi dari menu topup.', {
-      parse_mode: 'HTML'
-    });
-    return;
-  }
-
-  const baseAmount = Number(state.baseAmount);
-  const forcedUniqueSuffix = state.previewUniqueSuffix ?? null;
-  delete userState[chatId];
-
-  try {
-    await ctx.deleteMessage();
-  } catch (_) {
-    try {
-      await ctx.editMessageReplyMarkup({ inline_keyboard: [] });
-    } catch (_) {}
-  }
-
-  await processQrisTopupInvoice(ctx, baseAmount, forcedUniqueSuffix);
-});
-
-bot.action('qris_topup_confirm_cancel', async (ctx) => {
-  await ctx.answerCbQuery('Topup dibatalkan').catch(() => {});
-
-  const chatId = ctx.chat.id;
-  delete userState[chatId];
-
-  try {
-    await ctx.editMessageText('✅ Topup dibatalkan.', {
-      parse_mode: 'HTML'
-    });
-  } catch (_) {
-    await ctx.reply('✅ Topup dibatalkan.', {
-      parse_mode: 'HTML'
-    });
-  }
-});
-// ===== END SECTION: PAYMENT - TRIGGER TOPUP OTOMATIS =======================
-
-bot.action('qris_auto_topup', async (ctx) => {
-  try {
-    const userId = String(ctx.from.id);
-
-    // pastikan object-nya ada
-    global.depositState = global.depositState || {};
-    global.depositState[userId] = { amount: '' };
-
-    const msg =
-      `💰 *Silakan masukkan jumlah nominal saldo yang Anda ingin tambahkan ke akun Anda:*\n\n` +
-      `Jumlah saat ini: *Rp 0*`;
-
-    const opts = {
-      reply_markup: { inline_keyboard: keyboard_nomor() },
-      parse_mode: 'Markdown',
-    };
-
-    // kalau tombol ditekan dari pesan lama, coba edit biar tidak bikin pesan baru
-    try {
-      await ctx.editMessageText(msg, opts);
-    } catch {
-      await ctx.reply(msg, opts);
-    }
-
-    await ctx.answerCbQuery('OK').catch(() => {});
-  } catch (e) {
-    try { await ctx.answerCbQuery('Gagal membuka topup', { show_alert: true }); } catch {}
-  }
-});
+// ===== END SECTION: PAYMENT - HANDLERS TOPUP QRIS ===========================
 
 bot.command('addressel', async (ctx) => {
   // Wajib di private chat
@@ -6185,123 +6120,6 @@ bot.command('delressel', async (ctx) => {
 });
 
 
-// ============================================================================
-// SECTION: PAYMENT - HANDLER TOPUP MANUAL (ADMIN & USER)
-// - bot.on('photo')       : admin kirim QRIS statis (disimpan ke qris.jpg)
-// - bot.action('upload_qris') : tombol admin untuk mulai upload QRIS
-// - bot.action('topup_manual'): tombol user untuk topup manual via QRIS
-// ============================================================================
-bot.on('photo', async (ctx) => {
-  const adminId = ctx.from.id;
-  const state = userState[adminId];
-  if (!state || state.step !== 'upload_qris') return;
-
-  const fileId = ctx.message.photo.pop().file_id;
-  const fileLink = await ctx.telegram.getFileLink(fileId);
-  const filePath = path.join(__dirname, 'qris.jpg');
-
-  const response = await axios.get(fileLink.href, { responseType: 'arraybuffer' });
-  fs.writeFileSync(filePath, Buffer.from(response.data));
-
-  await ctx.reply('✅ Gambar QRIS berhasil diunggah!');
-  logger.info('🖼️ QRIS image uploaded by admin');
-  delete userState[adminId];
-});
-// === 🖼️ UPLOAD GAMBAR QRIS ===
-bot.action('upload_qris', async (ctx) => {
-  const adminId = ctx.from.id;
-  if (!isAdmin(adminId, adminIds)) {
-    return ctx.reply(NO_ACCESS_MESSAGE, { parse_mode: 'HTML' });
-}
-
-  await ctx.reply('📸 Kirim gambar QRIS yang ingin digunakan:');
-  userState[adminId] = { step: 'upload_qris' };
-});
-
-///////////////////////
-// ====== TOPUP SALDO MANUAL (QRIS) ======
-bot.action('topup_manual', async (ctx) => {
-  try {
-    await ctx.answerCbQuery().catch(() => {});
-    const qrisPath = path.join(__dirname, 'qris.jpg');
-
-    const storeName = NAMA_STORE || 'Layanan VPN';
-    const adminName = ADMIN_USERNAME || 'Admin';
-    const userId = ctx.from.id;
-
-    const captionText = `
-<b>📲 Top Up Saldo Manual via QRIS - ${storeName}</b>
-
-1️⃣ Scan QRIS di atas dengan aplikasi pembayaran kamu.
-2️⃣ Masukkan nominal sesuai saldo yang ingin kamu isi.
-💸 Minimal top up: <b>Rp15.000</b>.
-3️⃣ Setelah pembayaran <b>BERHASIL</b>, kirim bukti ke admin ${adminName}.
-
-<b>📝 Format pesan ke admin:</b>
-<code>Saya sudah top up saldo.
-ID Telegram : ${userId}
-Nominal     : Rp...
-Metode      : QRIS</code>
-
-Kalau belum pernah chat admin, klik username ${adminName} atau hubungi via WhatsApp:
-https://wa.me/6282397803813
-
-<i>Admin akan mengecek pembayaran kamu dan mengisi saldo secepatnya.</i>
-`.trim();
-
-        if (fs.existsSync(qrisPath)) {
-      // Hapus menu sebelumnya kalau ada
-      const userIdForTopup = ctx.from.id;
-      const prevId = lastMenuMsgId.get(userIdForTopup);
-      if (prevId) {
-        try {
-          await ctx.telegram.deleteMessage(ctx.chat.id, prevId);
-        } catch (e) {
-          // kalau gagal hapus (pesan sudah lama / tidak boleh dihapus) abaikan saja
-        }
-      }
-
-      // Kirim foto QRIS + caption
-      const sent = await ctx.replyWithPhoto(
-        { source: qrisPath },
-        {
-          caption: captionText,
-          parse_mode: 'HTML',
-        }
-      );
-
-      // Simpan ID pesan foto sebagai "menu" terakhir
-      if (sent && sent.message_id) {
-        lastMenuMsgId.set(userIdForTopup, sent.message_id);
-      }
-    } else {
-      const msgText =
-        `⚠️ QRIS belum diunggah oleh admin. Silakan hubungi ${adminName}.`;
-
-      // Hapus menu sebelumnya kalau ada
-      const userIdForTopup = ctx.from.id;
-      const prevId = lastMenuMsgId.get(userIdForTopup);
-      if (prevId) {
-        try {
-          await ctx.telegram.deleteMessage(ctx.chat.id, prevId);
-        } catch (e) {}
-      }
-
-      // Kirim pesan info & simpan ID sebagai menu terakhir
-      const sent = await ctx.reply(msgText);
-      if (sent && sent.message_id) {
-        lastMenuMsgId.set(userIdForTopup, sent.message_id);
-      }
-    }
-  } catch (err) {
-    logger.error('❌ Error di topup_manual:', err.message);
-    try {
-      await sendCleanMenu(ctx, '❌ Terjadi kesalahan saat menampilkan QRIS.', {
-        parse_mode: 'HTML',
-      });
-    } catch (e) {}
-  }
-});
 // ===== END SECTION: PAYMENT - HANDLER TOPUP MANUAL (ADMIN & USER) ==========
 
 /////
