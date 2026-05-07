@@ -12,6 +12,7 @@ const {
   findMatchingSettlementTransaction,
 } = require('./src/services/qrisUtils');
 const { createGopayQrisApi } = require('./src/services/gopayQrisApi');
+const { createQrisInvoiceStatusService } = require('./src/services/qrisInvoiceStatusService');
 
 
 // Helper sederhana untuk jeda (dipakai di broadcast)
@@ -511,6 +512,11 @@ const QRIS_AUTO_TOPUP_MAX = vars.QRIS_AUTO_TOPUP_MAX || 500000;
 // Interval cek QRIS & timeout invoice (bisa di-set dari .vars.json)
 const QRIS_CHECK_INTERVAL_MS = Number(vars.QRIS_CHECK_INTERVAL_MS || 5000);
 const QRIS_PAYMENT_TIMEOUT_MIN = Number(vars.QRIS_PAYMENT_TIMEOUT_MIN || 15);
+const qrisInvoiceStatusService = createQrisInvoiceStatusService({
+  getQrisPaymentByInvoiceId,
+  fetchGopayQrisStatus,
+  timeoutMin: QRIS_PAYMENT_TIMEOUT_MIN,
+});
 // ====================== END SECTION: PAYMENT CONFIG & QRIS ===================
 
 
@@ -601,76 +607,7 @@ async function fetchGopayQrisStatus(transactionId) {
 }
 
 async function checkQrisInvoiceStatus(invoiceId, billedAmount, createdAt) {
-  const inv = String(invoiceId || '').trim();
-  if (!inv) {
-    return { status: 'PENDING', paid_at: null, transaction: null };
-  }
-
-  const paymentRow = await getQrisPaymentByInvoiceId(db, inv);
-
-  if (!paymentRow) {
-    throw new Error('Invoice QRIS tidak ditemukan di database');
-  }
-
-  const providerTransactionId = String(paymentRow.provider_tx_id || '').trim();
-  const timeoutMin = Number(QRIS_PAYMENT_TIMEOUT_MIN || 10);
-  const expiresAt = Number(paymentRow.created_at || createdAt || 0) + timeoutMin * 60 * 1000;
-
-  if (!providerTransactionId) {
-    if ((paymentRow.created_at || createdAt) && Date.now() > expiresAt) {
-      return { status: 'EXPIRED', paid_at: null, transaction: null };
-    }
-    return { status: 'PENDING', paid_at: null, transaction: null };
-  }
-
-  const statusRes = await fetchGopayQrisStatus(providerTransactionId);
-  const data = statusRes.data || {};
-  const providerStatus = String(data.transaction_status || '').toLowerCase();
-  const normalizedTx = {
-    transaction_id: data.transaction_id || providerTransactionId,
-    transaction_time: data.transaction_time || null,
-    transaction_status: data.transaction_status || providerStatus || null,
-    payment_type: 'qris',
-    issuer: 'gopay',
-  };
-
-  if (providerStatus === 'settlement' || statusRes.success === true) {
-    return {
-      status: 'PAID',
-      paid_at: data.transaction_time || Date.now(),
-      transaction: normalizedTx,
-    };
-  }
-
-  if (providerStatus === 'expire') {
-    return {
-      status: 'EXPIRED',
-      paid_at: null,
-      transaction: normalizedTx,
-    };
-  }
-
-  if (providerStatus === 'cancel') {
-    return {
-      status: 'CANCELED',
-      paid_at: null,
-      transaction: normalizedTx,
-    };
-  }
-
-  if ((paymentRow.created_at || createdAt) && Date.now() > expiresAt) {
-    return {
-      status: 'EXPIRED',
-      paid_at: null,
-      transaction: normalizedTx,
-    };
-  }
-
-  return {
-    status: 'PENDING',
-    paid_at: null,
-    transaction: normalizedTx,
-  };
+  return qrisInvoiceStatusService.checkQrisInvoiceStatus(db, invoiceId, billedAmount, createdAt);
 }
 
 // === PENGATURAN BONUS TOPUP (TIER) ===
