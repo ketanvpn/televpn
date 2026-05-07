@@ -40,6 +40,15 @@ async function getRecentSaldoTransactionsByUserId(db, userId, limit = 20) {
   );
 }
 
+async function backfillMissingTransactionReferences(db) {
+  const rows = await listTransactionsWithNullReference(db);
+  for (const row of rows) {
+    const referenceId = `account-${row.type}-${row.user_id}-${row.timestamp}`;
+    await updateTransactionReferenceById(db, row.id, referenceId);
+  }
+  return rows.length;
+}
+
 module.exports = {
   insertTransaction,
   getTransactionByReferenceId,
@@ -47,4 +56,5 @@ module.exports = {
   listTransactionsWithNullReference,
   updateTransactionReferenceById,
   getRecentSaldoTransactionsByUserId,
+  backfillMissingTransactionReferences,
 };

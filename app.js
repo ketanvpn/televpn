@@ -127,10 +127,8 @@ const { handleTextAddSaldoFlow } = require('./src/bot/handlers/textAddSaldoFlow'
 const {
   insertTransaction,
   getTransactionByReferenceId,
-  getAnyTransactionWithNullReference,
-  listTransactionsWithNullReference,
-  updateTransactionReferenceById,
   getRecentSaldoTransactionsByUserId,
+  backfillMissingTransactionReferences,
 } = require('./src/repositories/transactionRepository');
 const {
   getUserSaldoById,
@@ -2340,25 +2338,10 @@ db.run(`CREATE TABLE IF NOT EXISTS transactions (
         return;
       }
 
-      getAnyTransactionWithNullReference(db)
-        .then((row) => {
-          if (row) {
-            listTransactionsWithNullReference(db)
-              .then((rows) => {
-                rows.forEach((row) => {
-                  const referenceId = `account-${row.type}-${row.user_id}-${row.timestamp}`;
-                  updateTransactionReferenceById(db, row.id, referenceId)
-                    .then(() => {
-                      logger.info(`Berhasil mengupdate reference_id untuk transaksi ${row.id}`);
-                    })
-                    .catch((err) => {
-                      logger.error(`Kesalahan mengupdate reference_id untuk transaksi ${row.id}:`, err.message);
-                    });
-                });
-              })
-              .catch((err) => {
-                logger.error('Kesalahan mengambil transaksi tanpa reference_id:', err.message);
-              });
+      backfillMissingTransactionReferences(db)
+        .then((updatedCount) => {
+          if (updatedCount > 0) {
+            logger.info(`Berhasil backfill reference_id untuk ${updatedCount} transaksi`);
           }
         })
         .catch((err) => {
