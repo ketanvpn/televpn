@@ -110,7 +110,12 @@ const {
   insertTransaction,
   getTransactionByReferenceId,
 } = require('./src/repositories/transactionRepository');
-const { getUserSaldoById, addUserSaldo } = require('./src/repositories/userRepository');
+const {
+  getUserSaldoById,
+  addUserSaldo,
+  getUserById,
+  deductUserSaldoIfEnough,
+} = require('./src/repositories/userRepository');
 const { run } = require('./src/repositories/sqliteRepo');
 const {
   getAccountsWithServerPriceByUserCreatedBetween,
@@ -13196,36 +13201,28 @@ case 'addsaldo_amount':
   }
 
   const targetId = state.targetId;
-  db.get('SELECT * FROM users WHERE user_id = ?', [targetId], (err, row) => {
-    if (err) {
-      logger.error('❌ Kesalahan saat memeriksa user_id:', err.message);
-      return ctx.reply('❌ Terjadi kesalahan saat memeriksa user.');
-    }
-
+  try {
+    const row = await getUserById(db, targetId);
     if (!row) {
       return ctx.reply(`⚠️ User dengan ID ${targetId} belum terdaftar di database.`);
     }
 
-    db.run('UPDATE users SET saldo = saldo + ? WHERE user_id = ?', [amount, targetId], function (err) {
-      if (err) {
-        logger.error('❌ Gagal menambah saldo:', err.message);
-        return ctx.reply('❌ Gagal menambah saldo.');
-      }
+    await addUserSaldo(db, targetId, amount);
+    const updatedSaldo = await getUserSaldoById(db, targetId);
 
-      // 🔥 Perbaikan di bawah ini
-      db.get('SELECT saldo FROM users WHERE user_id = ?', [targetId], (err2, updatedRow) => {
-        if (err2 || !updatedRow) {
-          logger.info(`Admin ${ctx.from.id} menambah saldo Rp${amount} ke user ${targetId}, namun gagal membaca saldo terbaru.`);
-          return ctx.reply(`✅ Saldo sebesar Rp${amount.toLocaleString()} berhasil ditambahkan ke user ${targetId}.`);
-        }
+    if (updatedSaldo == null) {
+      logger.info(`Admin ${ctx.from.id} menambah saldo Rp${amount} ke user ${targetId}, namun gagal membaca saldo terbaru.`);
+      await ctx.reply(`✅ Saldo sebesar Rp${amount.toLocaleString()} berhasil ditambahkan ke user ${targetId}.`);
+    } else {
+      await ctx.reply(`✅ Saldo sebesar Rp${amount.toLocaleString()} berhasil ditambahkan ke user ${targetId}.\n💰 Saldo user sekarang: Rp${Number(updatedSaldo).toLocaleString()}`);
+      logger.info(`Admin ${ctx.from.id} menambah saldo Rp${amount} ke user ${targetId}. Saldo user sekarang: Rp${updatedSaldo}`);
+    }
 
-        ctx.reply(`✅ Saldo sebesar Rp${amount.toLocaleString()} berhasil ditambahkan ke user ${targetId}.\n💰 Saldo user sekarang: Rp${updatedRow.saldo.toLocaleString()}`);
-        logger.info(`Admin ${ctx.from.id} menambah saldo Rp${amount} ke user ${targetId}. Saldo user sekarang: Rp${updatedRow.saldo}`);
-      });
-
-      delete userState[ctx.from.id];
-    });
-  });
+    delete userState[ctx.from.id];
+  } catch (err) {
+    logger.error('❌ Gagal menambah saldo:', err.message);
+    return ctx.reply('❌ Gagal menambah saldo.');
+  }
   break;
 
   default:
@@ -13589,16 +13586,12 @@ if (data === 'cancel') {
   }
 }
 async function updateUserSaldo(userId, saldo) {
-  return new Promise((resolve, reject) => {
-    db.run('UPDATE users SET saldo = saldo + ? WHERE user_id = ?', [saldo, userId], function (err) {
-      if (err) {
-        logger.error('⚠️ Kesalahan saat menambahkan saldo user:', err.message);
-        reject(err);
-      } else {
-        resolve();
-      }
+  return addUserSaldo(db, userId, saldo)
+    .then(() => {})
+    .catch((err) => {
+      logger.error('⚠️ Kesalahan saat menambahkan saldo user:', err.message);
+      throw err;
     });
-  });
 }
 // 🔐 Helper: proses pengurangan saldo + catat transaksi pembelian akun
 async function processAccountPayment(userId, amount, type, action, serverId, username) {
@@ -13613,23 +13606,14 @@ async function processAccountPayment(userId, amount, type, action, serverId, use
 
   return new Promise((resolve, reject) => {
     // 1) Kurangi saldo dengan syarat saldo masih cukup
-    db.run(
-      'UPDATE users SET saldo = saldo - ? WHERE user_id = ? AND saldo >= ?',
-      [amount, userId, amount],
-      function (err) {
-        if (err) {
-          logger.error('⚠️ Kesalahan saat mengurangi saldo pengguna:', err.message);
-          return reject(err);
-        }
-
-        // Kalau tidak ada baris yang ke-update, artinya saldo sudah tidak cukup (mungkin terpakai transaksi lain)
-        if (this.changes === 0) {
+    deductUserSaldoIfEnough(db, userId, amount)
+      .then((res) => {
+        if (!res.changes) {
           const warnMsg = `⚠️ Gagal mengurangi saldo (saldo tidak cukup) untuk user ${userId} saat proses pembelian.`;
           logger.warn(warnMsg);
           return reject(new Error(warnMsg));
         }
 
-        // 2) Catat transaksi saldo (kalau gagal, saldo sudah terpotong, jadi kita tetap resolve tapi log error)
         insertTransaction(db, {
           userId,
           amount: -amount,
@@ -13639,13 +13623,15 @@ async function processAccountPayment(userId, amount, type, action, serverId, use
         })
           .catch((err2) => {
             logger.error('⚠️ Gagal mencatat transaksi saldo pembelian akun:', err2.message);
-            // saldo sudah berkurang, jadi jangan rollback, cukup log
           })
           .finally(() => {
             resolve();
           });
-      }
-    );
+      })
+      .catch((err) => {
+        logger.error('⚠️ Kesalahan saat mengurangi saldo pengguna:', err.message);
+        reject(err);
+      });
   });
 }
 
