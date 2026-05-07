@@ -11,6 +11,7 @@ const {
   buildProviderTransactionFingerprint,
   findMatchingSettlementTransaction,
 } = require('./src/services/qrisUtils');
+const { createGopayQrisApi } = require('./src/services/gopayQrisApi');
 
 
 // Helper sederhana untuk jeda (dipakai di broadcast)
@@ -581,94 +582,31 @@ function buildDynamicQrisPayload(baseQrString, amount) {
 }
 
 async function fetchGopayTransactions() {
-  const gopayApiKey = getGopayApiKey();
-
-  if (!gopayApiKey) {
-    throw new Error('GOPAY_API_KEY belum diisi di .vars.json');
-  }
-
-  const res = await axios.post(
-    `${GOPAY_API_BASE_URL}/transactions`,
-    {},
-    {
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${gopayApiKey}`,
-      },
-      timeout: 15000,
-    }
-  );
-
-  if (!res.data?.success) {
-    throw new Error(res.data?.message || 'Gagal mengambil transaksi GoPay');
-  }
-
-  return Array.isArray(res.data?.data?.transactions)
-    ? res.data.data.transactions
-    : [];
+  const gopayApi = createGopayQrisApi({
+    axios,
+    getApiKey: getGopayApiKey,
+    baseUrl: GOPAY_API_BASE_URL,
+  });
+  return gopayApi.fetchTransactions();
 }
 
 
 async function generateGopayQris(amount) {
-  const gopayApiKey = getGopayApiKey();
-
-  if (!gopayApiKey) {
-    throw new Error('GOPAY_API_KEY belum diisi di .vars.json');
-  }
-
-  const nominal = Number(amount || 0);
-  if (!Number.isFinite(nominal) || nominal <= 0) {
-    throw new Error('Nominal QRIS tidak valid');
-  }
-
-  const res = await axios.post(
-    `${GOPAY_API_BASE_URL}/qris/generate`,
-    { amount: nominal },
-    {
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${gopayApiKey}`,
-      },
-      timeout: 15000,
-    }
-  );
-
-  if (!res.data?.success || !res.data?.data?.transaction_id) {
-    throw new Error(res.data?.message || 'Gagal membuat QRIS GoPay');
-  }
-
-  return res.data.data;
+  const gopayApi = createGopayQrisApi({
+    axios,
+    getApiKey: getGopayApiKey,
+    baseUrl: GOPAY_API_BASE_URL,
+  });
+  return gopayApi.generateQris(amount);
 }
 
 async function fetchGopayQrisStatus(transactionId) {
-  const gopayApiKey = getGopayApiKey();
-
-  if (!gopayApiKey) {
-    throw new Error('GOPAY_API_KEY belum diisi di .vars.json');
-  }
-
-  const txid = String(transactionId || '').trim();
-  if (!txid) {
-    throw new Error('transaction_id kosong');
-  }
-
-  const res = await axios.post(
-    `${GOPAY_API_BASE_URL}/qris/status`,
-    { transaction_id: txid },
-    {
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: `Bearer ${gopayApiKey}`,
-      },
-      timeout: 15000,
-    }
-  );
-
-  if (!res.data?.data) {
-    throw new Error(res.data?.message || 'Gagal mengecek status QRIS');
-  }
-
-  return res.data;
+  const gopayApi = createGopayQrisApi({
+    axios,
+    getApiKey: getGopayApiKey,
+    baseUrl: GOPAY_API_BASE_URL,
+  });
+  return gopayApi.fetchQrisStatus(transactionId);
 }
 
 async function checkQrisInvoiceStatus(invoiceId, billedAmount, createdAt) {
