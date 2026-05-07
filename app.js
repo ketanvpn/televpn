@@ -1,4 +1,4 @@
-const os = require('os');
+﻿const os = require('os');
 const sqlite3 = require('sqlite3').verbose();
 const express = require('express');
 const { Telegraf } = require('telegraf');
@@ -93,6 +93,19 @@ const {
 } = require('./src/bot/guards/access');
 const { registerPromoTemplateHandlers } = require('./src/bot/handlers/promoTemplates');
 const { registerBroadcastMenuHandlers } = require('./src/bot/handlers/broadcastMenu');
+const { handleTextTrialOps } = require('./src/bot/handlers/textTrialOps');
+const { handleResellerUsernameOps } = require('./src/bot/handlers/textResellerOps');
+const { handleTextAccountInputSteps } = require('./src/bot/handlers/textAccountInputSteps');
+const { handleTextAccountExpInput } = require('./src/bot/handlers/textAccountExpInput');
+const { executeAccountServiceAction } = require('./src/bot/handlers/textAccountServiceExec');
+const { runAccountPurchasePrecheck } = require('./src/bot/handlers/textAccountPrecheck');
+const { resolveAccountServerQuota } = require('./src/bot/handlers/textAccountServerQuota');
+const { handleTextAccountExpFlow } = require('./src/bot/handlers/textAccountExpFlow');
+const { incrementServerCreateCount } = require('./src/bot/handlers/serverCreateCounter');
+const { sendAccountPurchaseGroupNotif } = require('./src/bot/handlers/purchaseGroupNotif');
+const { handleTextAddServerFlow } = require('./src/bot/handlers/textAddServerFlow');
+const { handleTextResellerAddServerFlow } = require('./src/bot/handlers/textResellerAddServerFlow');
+const { handleTextAddSaldoFlow } = require('./src/bot/handlers/textAddSaldoFlow');
 
 const trialFile = TRIAL_DB_PATH;
 const trialConfigFile = TRIAL_CONFIG_PATH;
@@ -12248,1053 +12261,124 @@ if (lowerType.includes('deposit')) {
     });
   }
 ///////
-    if (state.step.startsWith('username_trial_')) {
-		
-// Hapus pesan konfirmasi user (biar chat tetap bersih)
-  try { await ctx.deleteMessage().catch(() => {}); } catch (e) {}
-  
-  // Teks yang dikirim user hanya sebagai KONFIRMASI,
-  // tidak dipakai sebagai username di server
-  const userInput = text; // kalau mau, bisa dipakai untuk log
-  const username = `trial${ctx.from.id}`; // username dummy, server akan buat username asli sendiri
-
-  // Tidak perlu validasi format username, karena tidak dipakai oleh server
-
-  const resselDbPath = './ressel.db';
-  const idUser = ctx.from.id.toString().trim();
-  // lanjut kode lama kamu di bawah ini...
-
-
-// Baca file reseller
-fs.readFile(resselDbPath, 'utf8', async (err, data) => {
-  if (err) {
-    logger.error('❌ Gagal membaca file ressel.db:', err.message);
-    return ctx.reply('❌ *Terjadi kesalahan saat membaca data reseller.*', { parse_mode: 'Markdown' });
-  }
-
-  const resselList = data.split('\n').map(line => line.trim()).filter(Boolean);
-  const isRessel = resselList.includes(idUser);
-
-              // Cek jika bukan reseller, apakah sudah melewati batas trial harian
-            // Cek jika BUKAN reseller
-      if (!isRessel) {
-        const cfg = await getTrialConfig();
-
-        const maxPerDay = (cfg && Number.isInteger(cfg.maxPerDay) && cfg.maxPerDay > 0)
-          ? cfg.maxPerDay
-          : 1;
-
-        const minBalance = (cfg && Number.isInteger(cfg.minBalanceForTrial) && cfg.minBalanceForTrial > 0)
-          ? cfg.minBalanceForTrial
-          : 0;
-
-        // 🔹 Kalau ada minimal saldo → cek saldo user dulu
-        if (minBalance > 0) {
-          const saldoUser = await getUserBalance(ctx.from.id);
-          if (saldoUser < minBalance) {
-            return ctx.reply(
-              '❌ *Kamu belum memenuhi syarat saldo untuk memakai trial.*\n\n' +
-              `• Minimal saldo untuk trial saat ini: *Rp${minBalance}*\n` +
-              `• Saldo kamu saat ini              : *Rp${saldoUser}*\n\n` +
-              'Silakan topup saldo terlebih dahulu lewat menu *💰 TopUp Saldo Otomatis / Manual via (QRIS)*,\n' +
-              'lalu coba lagi fitur trial-nya.',
-              { parse_mode: 'Markdown' }
-            );
-          }
-        }
-
-      // 🔹 Jika user WATCHLIST → batas trial lebih ketat
-      try {
-        const flagStatus = await getUserFlagStatus(ctx.from.id);
-
-        if (flagStatus === 'WATCHLIST') {
-          // Contoh aturan: WATCHLIST hanya boleh 1x trial per hari
-          const watchlistLimit = 1;
-          const usedToday = await getTrialUsageToday(ctx.from.id);
-
-          if (usedToday >= watchlistLimit) {
-            return ctx.reply(
-              '❌ *Batas trial harian untuk akun WATCHLIST sudah tercapai.*\n\n' +
-              `Saat ini akun kamu berstatus *WATCHLIST* sehingga fitur trial hanya bisa dipakai *${watchlistLimit}x per hari*.\n` +
-              'Silakan coba lagi besok, atau beli akun lewat menu *➕ Buat Akun*.',
-              { parse_mode: 'Markdown' }
-            );
-          }
-        }
-      } catch (e) {
-        // Kalau gagal baca flag, anggap saja NORMAL
-        logger.error('⚠️ Gagal membaca flag_status user saat cek trial WATCHLIST:', e.message || e);
-      }
-
-        // 🔹 Cek batas trial harian
-        const sudahPakai = await checkTrialAccess(ctx.from.id);
-        if (sudahPakai) {
-          return ctx.reply(
-            '❌ *Batas trial harian sudah tercapai.*\n\n' +
-            `Saat ini trial hanya bisa dipakai *${maxPerDay}x per hari* untuk 1 user.\n` +
-            'Silakan coba lagi besok, atau beli akun lewat menu *➕ Buat Akun*.',
-            { parse_mode: 'Markdown' }
-          );
-        }
-      }
-
-        // Lanjut buat trial
-    const { type, serverId } = state;
-    delete userState[ctx.chat.id];
-
-        try {
-      // Ambil durasi trial dari konfigurasi (satuan JAM)
-      const cfg = await getTrialConfig();
-      let durationHours = 1;
-      if (cfg && Number.isInteger(cfg.durationHours) && cfg.durationHours > 0) {
-        durationHours = cfg.durationHours;
-      }
-
-      const password = 'none';
-      const exp = durationHours;   // DIKIRIM ke script trial sebagai JUMLAH JAM
-      const iplimit = 'none';
-
-      const delFunctions = {
-        vmess: trialvmess,
-        vless: trialvless,
-        trojan: trialtrojan,
-        shadowsocks: trialshadowsocks,
-        ssh: trialssh
-      };
-
-      if (delFunctions[type]) {
-        const msg = await delFunctions[type](username, password, exp, iplimit, serverId);
-await recordAccountTransaction(ctx.from.id, type);
-await saveTrialAccess(ctx.from.id);
-
-const extraInfo =
-  '\n\nℹ️ *Catatan:*\n' +
-  'Username dan password yang tampil di atas dibuat *acak otomatis oleh server*.\n' +
-  'Teks yang kamu kirim tadi hanya dipakai sebagai konfirmasi, bukan sebagai username akun.';
-
-await ctx.reply(msg + extraInfo, { parse_mode: 'Markdown' });
-
-        logger.info(`✅ Trial ${type} oleh ${ctx.from.id}`);
-      }
-
-    } catch (err) {
-      logger.error('❌ Gagal proses trial akun:', err.message);
-      await ctx.reply('❌ *Terjadi kesalahan saat memproses trial akun.*', { parse_mode: 'Markdown' });
-    }
-
-  });
-  return;
-}
-
-    if (state.step.startsWith('username_unlock_')) {
-    const username = text;
-    // Validasi username (hanya huruf kecil dan angka, 3-20 karakter)
-    if (!/^[a-z0-9]{3,20}$/.test(username)) {
-      return ctx.reply('❌ *Username tidak valid. Gunakan huruf kecil dan angka (3–20 karakter).*', { parse_mode: 'Markdown' });
-    }
-       //izin ressel saja
-    const resselDbPath = './ressel.db';
-    fs.readFile(resselDbPath, 'utf8', async (err, data) => {
-      if (err) {
-        logger.error('❌ Gagal membaca file ressel.db:', err.message);
-        return ctx.reply('❌ *Terjadi kesalahan saat membaca data reseller.*', { parse_mode: 'Markdown' });
-      }
-
-      const idUser = ctx.from.id.toString().trim();
-      const resselList = data.split('\n').map(line => line.trim()).filter(Boolean);
-
-      console.log('🧪 ID Pengguna:', idUser);
-      console.log('📂 Daftar Ressel:', resselList);
-
-      const isRessel = resselList.includes(idUser);
-
-      if (!isRessel) {
-        return ctx.reply('❌ *Fitur ini hanya untuk Ressel VPN.*', { parse_mode: 'Markdown' });
-      }
-  //izin ressel saja
-    const { type, serverId } = state;
-    delete userState[ctx.chat.id];
-
-    let msg = 'none';
-    try {
-      const password = 'none', exp = 'none', iplimit = 'none';
-
-      const delFunctions = {
-        vmess: unlockvmess,
-        vless: unlockvless,
-        trojan: unlocktrojan,
-        shadowsocks: unlockshadowsocks,
-        ssh: unlockssh
-      };
-
-      if (delFunctions[type]) {
-        msg = await delFunctions[type](username, password, exp, iplimit, serverId);
-        await recordAccountTransaction(ctx.from.id, type);
-      }
-
-      await ctx.reply(msg, { parse_mode: 'Markdown' });
-      logger.info(`✅ Akun ${type} berhasil unlock oleh ${ctx.from.id}`);
-    } catch (err) {
-      logger.error('❌ Gagal hapus akun:', err.message);
-      await ctx.reply('❌ *Terjadi kesalahan saat menghapus akun.*', { parse_mode: 'Markdown' });
-    }});
-    return; // Penting! Jangan lanjut ke case lain
-  }
-    if (state.step.startsWith('username_lock_')) {
-    const username = text;
-    // Validasi username (hanya huruf kecil dan angka, 3-20 karakter)
-    if (!/^[a-z0-9]{3,20}$/.test(username)) {
-      return ctx.reply('❌ *Username tidak valid. Gunakan huruf kecil dan angka (3–20 karakter).*', { parse_mode: 'Markdown' });
-    }
-       //izin ressel saja
-    const resselDbPath = './ressel.db';
-    fs.readFile(resselDbPath, 'utf8', async (err, data) => {
-      if (err) {
-        logger.error('❌ Gagal membaca file ressel.db:', err.message);
-        return ctx.reply('❌ *Terjadi kesalahan saat membaca data reseller.*', { parse_mode: 'Markdown' });
-      }
-
-      const idUser = ctx.from.id.toString().trim();
-      const resselList = data.split('\n').map(line => line.trim()).filter(Boolean);
-
-      console.log('🧪 ID Pengguna:', idUser);
-      console.log('📂 Daftar Ressel:', resselList);
-
-      const isRessel = resselList.includes(idUser);
-
-      if (!isRessel) {
-        return ctx.reply('❌ *Fitur ini hanya untuk Ressel VPN.*', { parse_mode: 'Markdown' });
-      }
-  //izin ressel saja
-    const { type, serverId } = state;
-    delete userState[ctx.chat.id];
-
-    let msg = 'none';
-    try {
-      const password = 'none', exp = 'none', iplimit = 'none';
-
-      const delFunctions = {
-        vmess: lockvmess,
-        vless: lockvless,
-        trojan: locktrojan,
-        shadowsocks: lockshadowsocks,
-        ssh: lockssh
-      };
-
-      if (delFunctions[type]) {
-        msg = await delFunctions[type](username, password, exp, iplimit, serverId);
-        await recordAccountTransaction(ctx.from.id, type);
-      }
-
-      await ctx.reply(msg, { parse_mode: 'Markdown' });
-      logger.info(`✅ Akun ${type} berhasil di kunci oleh ${ctx.from.id}`);
-    } catch (err) {
-      logger.error('❌ Gagal hapus akun:', err.message);
-      await ctx.reply('❌ *Terjadi kesalahan saat menghapus akun.*', { parse_mode: 'Markdown' });
-    }});
-    return; // Penting! Jangan lanjut ke case lain
-  }
-  if (state.step.startsWith('username_del_')) {
-    const username = text;
-    // Validasi username (hanya huruf kecil dan angka, 3-20 karakter)
-    if (!/^[a-z0-9]{3,20}$/.test(username)) {
-      return ctx.reply('❌ *Username tidak valid. Gunakan huruf kecil dan angka (3–20 karakter).*', { parse_mode: 'Markdown' });
-    }
-       //izin ressel saja
-    const resselDbPath = './ressel.db';
-    fs.readFile(resselDbPath, 'utf8', async (err, data) => {
-      if (err) {
-        logger.error('❌ Gagal membaca file ressel.db:', err.message);
-        return ctx.reply('❌ *Terjadi kesalahan saat membaca data reseller.*', { parse_mode: 'Markdown' });
-      }
-
-      const idUser = ctx.from.id.toString().trim();
-      const resselList = data.split('\n').map(line => line.trim()).filter(Boolean);
-
-      console.log('🧪 ID Pengguna:', idUser);
-      console.log('📂 Daftar Ressel:', resselList);
-
-      const isRessel = resselList.includes(idUser);
-
-      if (!isRessel) {
-        return ctx.reply('❌ *Fitur ini hanya untuk Ressel VPN.*', { parse_mode: 'Markdown' });
-      }
-  //izin ressel saja
-    const { type, serverId } = state;
-    delete userState[ctx.chat.id];
-
-    let msg = 'none';
-    try {
-      const password = 'none', exp = 'none', iplimit = 'none';
-
-      const delFunctions = {
-        vmess: delvmess,
-        vless: delvless,
-        trojan: deltrojan,
-        shadowsocks: delshadowsocks,
-        ssh: delssh
-      };
-
-      if (delFunctions[type]) {
-        msg = await delFunctions[type](username, password, exp, iplimit, serverId);
-        await recordAccountTransaction(ctx.from.id, type);
-      }
-
-      await ctx.reply(msg, { parse_mode: 'Markdown' });
-      logger.info(`✅ Akun ${type} berhasil dihapus oleh ${ctx.from.id}`);
-    } catch (err) {
-      logger.error('❌ Gagal hapus akun:', err.message);
-      await ctx.reply('❌ *Terjadi kesalahan saat menghapus akun.*', { parse_mode: 'Markdown' });
-    }});
-    return; // Penting! Jangan lanjut ke case lain
-  }
-  if (state.step.startsWith('username_')) {
-    state.username = text;
-
-    if (!state.username) {
-      return ctx.reply('❌ *Username tidak valid. Masukkan username yang valid.*', { parse_mode: 'Markdown' });
-    }
-    if (state.username.length < 4 || state.username.length > 20) {
-      return ctx.reply('❌ *Username harus terdiri dari 4 hingga 20 karakter.*', { parse_mode: 'Markdown' });
-    }
-    if (/[A-Z]/.test(state.username)) {
-      return ctx.reply('❌ *Username tidak boleh menggunakan huruf kapital. Gunakan huruf kecil saja.*', { parse_mode: 'Markdown' });
-    }
-    if (/[^a-z0-9]/.test(state.username)) {
-      return ctx.reply('❌ *Username tidak boleh mengandung karakter khusus atau spasi. Gunakan huruf kecil dan angka saja.*', { parse_mode: 'Markdown' });
-    }
-    const { type, action } = state;
-    if (action === 'create') {
-      if (type === 'ssh') {
-        state.step = `password_${state.action}_${state.type}`;
-        await ctx.reply('🔑 *Masukkan password:*', { parse_mode: 'Markdown' });
-      } else {
-        state.step = `exp_${state.action}_${state.type}`;
-        await ctx.reply('⏳ *Masukkan masa aktif (hari):*', { parse_mode: 'Markdown' });
-      }
-    } else if (action === 'renew') {
-      state.step = `exp_${state.action}_${state.type}`;
-      await ctx.reply('⏳ *Masukkan masa aktif (hari):*', { parse_mode: 'Markdown' });
-    }
-  } else if (state.step.startsWith('password_')) {
-    state.password = ctx.message.text.trim();
-    if (!state.password) {
-      return ctx.reply('❌ *Password tidak valid. Masukkan password yang valid.*', { parse_mode: 'Markdown' });
-    }
-    if (state.password.length < 3) {
-      return ctx.reply('❌ *Password harus terdiri dari minimal 3 karakter.*', { parse_mode: 'Markdown' });
-    }
-    if (/[^a-zA-Z0-9]/.test(state.password)) {
-      return ctx.reply('❌ *Password tidak boleh mengandung karakter khusus atau spasi.*', { parse_mode: 'Markdown' });
-    }
-    state.step = `exp_${state.action}_${state.type}`;
-    await ctx.reply('⏳ *Masukkan masa aktif (hari):*', { parse_mode: 'Markdown' });
-  } else if (state.step.startsWith('exp_')) {
-    const expInput = ctx.message.text.trim();
-    
-// Cek hanya angka
-if (!/^\d+$/.test(expInput)) {
-  return ctx.reply('❌ *Masa aktif hanya boleh angka, contoh: 30*', { parse_mode: 'Markdown' });
-}
-
-const exp = parseInt(expInput, 10);
-
-if (isNaN(exp) || exp <= 0) {
-  return ctx.reply('❌ *Masa aktif tidak valid. Masukkan angka yang valid.*', { parse_mode: 'Markdown' });
-}
-
-if (exp > 365) {
-  return ctx.reply('❌ *Masa aktif tidak boleh lebih dari 365 hari.*', { parse_mode: 'Markdown' });
-}
-    state.exp = exp;
-
-    db.get('SELECT quota, iplimit FROM Server WHERE id = ?', [state.serverId], async (err, server) => {
-      if (err) {
-        logger.error('⚠️ Error fetching server details:', err.message);
-        return ctx.reply('❌ *Terjadi kesalahan saat mengambil detail server.*', { parse_mode: 'Markdown' });
-      }
-
-      if (!server) {
-        return ctx.reply('❌ *Server tidak ditemukan.*', { parse_mode: 'Markdown' });
-      }
-
-      // baseQuota = kuota untuk paket 30 hari
-  const baseQuota = server.quota;
-  const days = state.exp || 30; // kalau exp nggak kebaca, anggap 30 hari
-
-  let computedQuota = baseQuota;
-
-  // Kalau baseQuota > 0 ? hitung proporsional
-  if (baseQuota && baseQuota > 0) {
-    computedQuota = Math.max(1, Math.floor(baseQuota * days / 30));
-  }
-
-  state.quota = computedQuota;
-  state.iplimit = server.iplimit;
-
-  const { username, password, exp, quota, iplimit, serverId, type, action } = state;
-      let msg;
-
-      db.get('SELECT harga FROM Server WHERE id = ?', [serverId], async (err, server) => {
-        if (err) {
-          logger.error('⚠️ Error fetching server price:', err.message);
-          return ctx.reply('❌ *Terjadi kesalahan saat mengambil harga server.*', { parse_mode: 'Markdown' });
-        }
-
-        if (!server) {
-          return ctx.reply('❌ *Server tidak ditemukan.*', { parse_mode: 'Markdown' });
-        }
-
-                // Harga dasar dari tabel Server (sebagai harga paket 30 hari)
-const baseHarga30 = Number(server.harga) || 0;
-const days = state.exp || 30;
-// cek status reseller lebih awal agar bisa dipakai di bawah
-const isR = await isUserReseller(ctx.from.id).catch(() => false);
-
-let totalHarga = 0;
-if (baseHarga30 > 0) {
-  // Harga normal proporsional terhadap lama hari
-  totalHarga = Math.max(1, Math.floor(baseHarga30 * days / 30));
-
-
-  if (isR) {
-    totalHarga = Math.max(1, Math.floor(totalHarga * RESELLER_DISCOUNT));
-  }
-} else {
-  totalHarga = 0;
-}
-
-
-        db.get('SELECT saldo FROM users WHERE user_id = ?', [ctx.from.id], async (err, user) => {
-          if (err) {
-            logger.error('⚠️ Kesalahan saat mengambil saldo pengguna:', err.message);
-            return ctx.reply('❌ *Terjadi kesalahan saat mengambil saldo pengguna.*', { parse_mode: 'Markdown' });
-          }
-
-          if (!user) {
-            return ctx.reply('❌ *Pengguna tidak ditemukan.*', { parse_mode: 'Markdown' });
-          }
-
-          const saldo = user.saldo;
-          if (saldo < totalHarga) {
-            return ctx.reply('❌ *Saldo Anda tidak mencukupi untuk melakukan transaksi ini.*', { parse_mode: 'Markdown' });
-          }
-		            // 🔹 Limit create per hari untuk WATCHLIST (non-reseller)
-          // isR sudah dihitung di atas (pakai isUserReseller)
-          if (action === 'create' && !isR) {
-            try {
-              const flagStatus = await getUserFlagStatus(ctx.from.id);
-
-              if (flagStatus === 'WATCHLIST') {
-                // Aturan: user WATCHLIST hanya boleh X akun baru per hari
-                const watchlistCreateLimit = 3; // 👉 silakan ganti angkanya kalau mau
-                const createdToday = await getCreateUsageToday(ctx.from.id);
-
-                if (createdToday >= watchlistCreateLimit) {
-                  return ctx.reply(
-                    '❌ *Batas pembuatan akun harian untuk akun WATCHLIST sudah tercapai.*\n\n' +
-                      `Saat ini akun kamu berstatus *WATCHLIST* sehingga hanya boleh membuat *${watchlistCreateLimit} akun baru per hari*.\n` +
-                      'Silakan coba lagi besok, atau gunakan akun yang sudah ada / hubungi admin.',
-                    { parse_mode: 'Markdown' }
-                  );
-                }
-              }
-            } catch (e) {
-              logger.error('⚠️ Gagal cek limit create user WATCHLIST:', e.message || e);
-              // Kalau error, jangan blok user (anggap saja lolos)
-            }
-          }
-		  let waitCtrl = null;
-waitCtrl = await startWaiting(ctx, '⏳ Sedang membuat akun...');
-          if (action === 'create') {
-            if (type === 'vmess') {
-              msg = await createvmess(username, exp, quota, iplimit, serverId);
-              
-            } else if (type === 'vless') {
-              msg = await createvless(username, exp, quota, iplimit, serverId);
-              
-            } else if (type === 'trojan') {
-              msg = await createtrojan(username, exp, quota, iplimit, serverId);
-              
-            } else if (type === 'shadowsocks') {
-              msg = await createshadowsocks(username, exp, quota, iplimit, serverId);
-              
-            } else if (type === 'ssh') {
-              msg = await createssh(username, password, exp, iplimit, serverId);
-              
-            }
-        // 📝 Simpan / update info akun di tabel accounts
-
-            logger.info(`Account created and transaction recorded for user ${ctx.from.id}, type: ${type}`);
-          } else if (action === 'renew') {
-            if (type === 'vmess') {
-              msg = await renewvmess(username, exp, quota, iplimit, serverId);
-              
-            } else if (type === 'vless') {
-              msg = await renewvless(username, exp, quota, iplimit, serverId);
-              
-            } else if (type === 'trojan') {
-              msg = await renewtrojan(username, exp, quota, iplimit, serverId);
-              
-            } else if (type === 'shadowsocks') {
-              msg = await renewshadowsocks(username, exp, quota, iplimit, serverId);
-              
-            } else if (type === 'ssh') {
-              msg = await renewssh(username, exp, iplimit, serverId);
-              
-            }
-
-            // 📝 Update info akun di tabel accounts (perpanjangan)
-
-            logger.info(`Account renewed and transaction recorded for user ${ctx.from.id}, type: ${type}`);
-          }
-//SALDO DATABES
-// setelah bikin akun (create/renew), kita cek hasilnya
-if (msg.includes('❌')) {
-  logger.error(`🔄 Rollback saldo user ${ctx.from.id}, type: ${type}, server: ${serverId}, respon: ${msg}`);
-  try { if (waitCtrl) await waitCtrl.stop('❌ Gagal membuat akun. Coba lagi ya.', true); } catch (_) {}
-  return ctx.reply(msg, { parse_mode: 'Markdown' });
-}
-
-// kalau sampai sini artinya tidak ada ❌, transaksi sukses
-logger.info(`✅ Transaksi sukses untuk user ${ctx.from.id}, type: ${type}, server: ${serverId}`);
-
-try {
-  // 🔐 Pengurangan saldo + catat transaksi lewat helper
-  await processAccountPayment(
-    ctx.from.id,
-    totalHarga,
-    type,
-    action,
-    serverId,
-    username
-  );
-  upsertAccount(ctx.from.id, username, type, serverId, exp);
-} catch (err) {
-  // Di titik ini kemungkinan besar akun sudah jadi,
-  // tapi saldo gagal dipotong (misal karena race condition)
-  logger.error('⚠️ Gagal memproses pengurangan saldo & transaksi pembelian:', err.message);
-  // Optional: kamu bisa kirim notif ke admin di sini untuk cek manual
-}
-
-
-db.run('UPDATE Server SET total_create_akun = total_create_akun + 1 WHERE id = ?', [serverId], (err) => {
-  if (err) {
-    logger.error('⚠️ Kesalahan saat menambahkan total_create_akun:', err.message);
-  }
-});
-// ==== NOTIF PEMBELIAN / RENEW KE GRUP ====
-try {
-   // Info user Telegram
-  let userInfo;
-  try {
-    userInfo = await bot.telegram.getChat(ctx.from.id);
-  } catch (e) {
-    userInfo = {};
-  }
-
-  // ambil username TANPA @, kalau nggak ada pakai first_name, tanpa ID
-  let usernameTelegram = userInfo.username || userInfo.first_name || '';
-
-  usernameTelegram = usernameTelegram.trim();
-  if (usernameTelegram.startsWith('@')) {
-    usernameTelegram = usernameTelegram.slice(1);
-  }
-  if (!usernameTelegram) {
-    usernameTelegram = '-';
-  }
-
- // tampil di notif grup hanya username (tanpa ID)
-  const userDisplay = usernameTelegram;
-  
-  // Role: Reseller / Member
-  let roleLabel = 'Member';
-  try {
-    const isRes = await isUserReseller(ctx.from.id);
-    if (isRes) roleLabel = 'Reseller';
-  } catch (e) {
-    // kalau error, biarkan tetap "Member"
-  }
-
-  const actionText = (action === 'create') ? 'ACCOUNT CREATED' : 'ACCOUNT RENEWED';
-
-  // Ambil nama server dari tabel Server
-  let serverName = 'Server ID ' + serverId;
-  try {
-    const serverRow = await new Promise((resolve) => {
-      db.get('SELECT nama_server FROM Server WHERE id = ?', [serverId], (err, row) => {
-        if (err) {
-          logger.error('Gagal ambil nama_server:', err.message);
-          return resolve(null);
-        }
-        resolve(row);
-      });
+    const handledTextTrialOps = await handleTextTrialOps(ctx, {
+      state,
+      text,
+      fs,
+      logger,
+      userState,
+      getTrialConfig,
+      getUserBalance,
+      getUserFlagStatus,
+      getTrialUsageToday,
+      checkTrialAccess,
+      trialvmess,
+      trialvless,
+      trialtrojan,
+      trialshadowsocks,
+      trialssh,
+      recordAccountTransaction,
+      saveTrialAccess,
     });
+    if (handledTextTrialOps) return;
 
-    if (serverRow && serverRow.nama_server) {
-      serverName = serverRow.nama_server;
-    }
-  } catch (e) {
-    // sudah di-log di atas kalau error
-  }
-
-    // ====== HITUNG DURASI & EXPIRED DARI TABEL accounts ======
-  let createdText    = '-';
-  let expiredDateOnly = '-';
-  let durasiHari     = exp;   // default fallback = exp input
-  let sisaHari       = '-';
-
-  try {
-    const accountRow = await new Promise((resolve) => {
-      db.get(
-        'SELECT created_at, expires_at FROM accounts WHERE username = ? AND server_id = ? AND type = ? ORDER BY id DESC LIMIT 1',
-        [username, serverId, type],
-        (err, row) => {
-          if (err) {
-            logger.error('Gagal ambil data akun untuk notif grup:', err.message);
-            return resolve(null);
-          }
-          resolve(row);
-        }
-      );
+    const handledResellerUsernameOps = await handleResellerUsernameOps(ctx, {
+      state,
+      text,
+      fs,
+      userState,
+      logger,
+      recordAccountTransaction,
+      unlockvmess,
+      unlockvless,
+      unlocktrojan,
+      unlockshadowsocks,
+      unlockssh,
+      lockvmess,
+      lockvless,
+      locktrojan,
+      lockshadowsocks,
+      lockssh,
+      delvmess,
+      delvless,
+      deltrojan,
+      delshadowsocks,
+      delssh,
     });
+    if (handledResellerUsernameOps) return;
+    const handledTextAccountInputSteps = await handleTextAccountInputSteps(ctx, {
+      state,
+      text,
+    });
+    if (handledTextAccountInputSteps) return;
 
-    const options = {
-      timeZone: 'Asia/Jayapura',
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit'
-    };
-    const msPerDay = 24 * 60 * 60 * 1000;
+  if (state.step.startsWith('exp_')) {
+    const handledExpInput = await handleTextAccountExpInput(ctx, { state });
+    if (!handledExpInput.valid) return;
 
-    if (accountRow && accountRow.created_at && accountRow.expires_at) {
-      const createdAtDate = new Date(accountRow.created_at);
-      const expiredAtDate = new Date(accountRow.expires_at);
-
-      createdText     = createdAtDate.toLocaleDateString('id-ID', options);
-      expiredDateOnly = expiredAtDate.toLocaleDateString('id-ID', options);
-
-      // Durasi = selisih hari antara created_at dan expires_at
-      durasiHari = Math.max(
-        1,
-        Math.round((expiredAtDate.getTime() - createdAtDate.getTime()) / msPerDay)
-      );
-
-      // Sisa hari dari sekarang
-      const diffNow = Math.ceil((expiredAtDate.getTime() - Date.now()) / msPerDay);
-      sisaHari = diffNow > 0 ? diffNow : 0;
-    } else {
-      // Fallback kalau data di accounts belum ada / gagal ambil
-      const now = new Date();
-      const expiredAt = new Date(now.getTime() + exp * msPerDay);
-
-      createdText     = now.toLocaleDateString('id-ID', options);
-      expiredDateOnly = expiredAt.toLocaleDateString('id-ID', options);
-      durasiHari      = exp;
-      sisaHari        = exp;
-    }
-  } catch (e) {
-    logger.error('Error hitung tanggal expired untuk notif grup:', e.message);
-  }
-
-  // Susun teks notif dengan garis '=' (aman di semua HP)
-  let notifText = '';
-
-  if (action === 'create') {
-    // ➜ NOTIF UNTUK BUAT AKUN BARU
-    notifText =
-      '<blockquote>\n' +
-      '<code>━━━━━━━━━━━━━━━━━━━━</code>\n' +
-      '<b>ACCOUNT CREATED</b>\n' +
-      '<code>━━━━━━━━━━━━━━━━━━━━</code>\n' +
-      '<b>' + serverName + '</b>\n' +
-      '<code>\n' + // <-- MULAI BLOK MONOSPACE
-      '-> Client  : ' + userDisplay + '\n' +
-      '-> Role    : ' + roleLabel + '\n' +
-      '-> User    : <code>' + username + '</code>\n' +
-      '-> Type    : ' + type.toUpperCase() + '\n' +
-      '-> Durasi  : ' + exp + ' Hari\n' +       // durasi paket yang dipilih
-     // '-> Sisa    : ' + sisaHari + ' Hari\n' +  // sisa sekarang (harusnya = exp kalau baru dibuat)
-      '-> Expired : ' + expiredDateOnly + '\n' +
-      '</code>\n' + // <-- AKHIR BLOK MONOSPACE
-      '<code>━━━━━━━━━━━━━━━━━━━━</code>\n' +
-      '</blockquote>';
+    const handledTextAccountExpFlow = await handleTextAccountExpFlow(ctx, {
+      state,
+      userState,
+      db,
+      logger,
+      bot,
+      GROUP_ID,
+      isUserReseller,
+      RESELLER_DISCOUNT,
+      getUserFlagStatus,
+      getCreateUsageToday,
+      startWaiting,
+      executeAccountServiceAction,
+      processAccountPayment,
+      upsertAccount,
+      incrementServerCreateCount,
+      sendAccountPurchaseGroupNotif,
+      createvmess,
+      createvless,
+      createtrojan,
+      createshadowsocks,
+      createssh,
+      renewvmess,
+      renewvless,
+      renewtrojan,
+      renewshadowsocks,
+      renewssh,
+      runAccountPurchasePrecheck,
+      resolveAccountServerQuota,
+    });
+    if (handledTextAccountExpFlow) return;
   } else {
-    // ➜ NOTIF UNTUK RENEW / PERPANJANG
-    const sisaSebelum = Math.max(sisaHari - exp, 0); // kira2 sisa sebelum tambah hari
-
-    notifText =
-      '<blockquote>\n' +
-      '<code>━━━━━━━━━━━━━━━━━━━━</code>\n' +
-      '<b>ACCOUNT RENEWED</b>\n' +
-      '<code>━━━━━━━━━━━━━━━━━━━━</code>\n' +
-      '<b>' + serverName + '</b>\n' +
-      '<code>\n' + // <-- MULAI BLOK MONOSPACE
-      '-> Client  : ' + userDisplay + '\n' +
-      '-> Role    : ' + roleLabel + '\n' +
-      '-> User    : <code>' + username + '</code>\n' +
-      '-> Type    : ' + type.toUpperCase() + '\n' +
-      '-> Sisa sebelum : ' + sisaSebelum + ' Hari\n' +
-      '-> Perpanjang   : +' + exp + ' Hari\n' +
-      '-> Sisa sekarang: ' + sisaHari + ' Hari\n' +
-      '-> Expired      : ' + expiredDateOnly + '\n' +
-      '</code>\n' + // <-- AKHIR BLOK MONOSPACE
-      '<code>━━━━━━━━━━━━━━━━━━━━</code>\n' +
-      '</blockquote>';
-  }
-
-  await bot.telegram.sendMessage(GROUP_ID, notifText, { parse_mode: 'HTML' });
-
-} catch (e) {
-  logger.error('Gagal kirim notif pembelian ke grup:', e.message);
-}
-// ==== END NOTIF GRUP ====
-
-if (waitCtrl) await waitCtrl.stop('✅ Akun berhasil dibuat.', true);
-await ctx.reply(msg, { parse_mode: 'Markdown' });
-delete userState[ctx.chat.id];
-//SALDO DATABES
-          });
-        });
-      });
-    }
-  else if (state.step === 'addserver') {
-    const domain = ctx.message.text.trim();
-    if (!domain) {
-      await ctx.reply('⚠️ *Domain tidak boleh kosong.* Silakan masukkan domain server yang valid.', { parse_mode: 'Markdown' });
-      return;
-    }
-
-    state.step = 'addserver_auth';
-    state.domain = domain;
-    await ctx.reply('🔑 *Silakan masukkan auth server:*', { parse_mode: 'Markdown' });
-  } else if (state.step === 'addserver_auth') {
-    const auth = ctx.message.text.trim();
-    if (!auth) {
-      await ctx.reply('⚠️ *Auth tidak boleh kosong.* Silakan masukkan auth server yang valid.', { parse_mode: 'Markdown' });
-      return;
-    }
-
-    state.step = 'addserver_nama_server';
-    state.auth = auth;
-    await ctx.reply('🏷️ *Silakan masukkan nama server:*', { parse_mode: 'Markdown' });
-  } else if (state.step === 'addserver_nama_server') {
-    const nama_server = ctx.message.text.trim();
-    if (!nama_server) {
-      await ctx.reply('⚠️ *Nama server tidak boleh kosong.* Silakan masukkan nama server yang valid.', { parse_mode: 'Markdown' });
-      return;
-    }
-
-    state.step = 'addserver_quota';
-state.nama_server = nama_server;
-await ctx.reply(
-  '📊 *Silakan masukkan quota server (dalam GB, contoh: 500):*',
-  { parse_mode: 'Markdown' }
-);
-} else if (state.step === 'addserver_quota') {
-  const quota = parseInt(ctx.message.text.trim(), 10);
-  if (isNaN(quota) || quota <= 0) {
-    await ctx.reply(
-      '⚠️ *Quota tidak valid.* Quota harus berupa angka dan lebih besar dari 0.\n' +
-      'Contoh: `500` (untuk 500 GB).',
-      { parse_mode: 'Markdown' }
-    );
-    return;
-  }
-
-    state.step = 'addserver_iplimit';
-    state.quota = quota;
-    await ctx.reply('🔢 *Silakan masukkan limit IP server:*', { parse_mode: 'Markdown' });
-  } else if (state.step === 'addserver_iplimit') {
-  const iplimit = parseInt(ctx.message.text.trim(), 10);
-  if (isNaN(iplimit) || iplimit <= 0) {
-    await ctx.reply(
-      '⚠️ *Limit IP tidak valid.* Limit IP harus berupa angka dan lebih besar dari 0.\n' +
-      'Contoh: `1` atau `2`.',
-      { parse_mode: 'Markdown' }
-    );
-    return;
-  }
-
-    state.step = 'addserver_batas_create_akun';
-    state.iplimit = iplimit;
-    await ctx.reply('🔢 *Silakan masukkan batas create akun server:*', { parse_mode: 'Markdown' });
-  } else if (state.step === 'addserver_batas_create_akun') {
-  const batas_create_akun = parseInt(ctx.message.text.trim(), 10);
-  if (isNaN(batas_create_akun) || batas_create_akun <= 0) {
-    await ctx.reply(
-      '⚠️ *Batas create akun tidak valid.* Nilai harus berupa angka dan lebih besar dari 0.\n' +
-      'Contoh: `100` (maksimal 100 akun).',
-      { parse_mode: 'Markdown' }
-    );
-    return;
-  }
-
-    state.step = 'addserver_harga';
-state.batas_create_akun = batas_create_akun;
-await ctx.reply(
-  '💰 *Silakan masukkan harga server untuk paket 30 hari* (dalam rupiah, tanpa titik. Contoh: 12000):',
-  { parse_mode: 'Markdown' }
-);
-
-  } else if (state.step === 'addserver_harga') {
-    const harga = parseFloat(ctx.message.text.trim());
-    if (isNaN(harga) || harga <= 0) {
-      await ctx.reply('⚠️ *Harga tidak valid.* Silakan masukkan harga server yang valid.', { parse_mode: 'Markdown' });
-      return;
-    }
-    const { domain, auth, nama_server, quota, iplimit, batas_create_akun } = state;
-
-  try {
-    db.run('INSERT INTO Server (domain, auth, nama_server, quota, iplimit, batas_create_akun, harga, total_create_akun) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-          [domain, auth, nama_server, quota, iplimit, batas_create_akun, harga, 0], function(err) {        if (err) {
-          logger.error('Error saat menambahkan server:', err.message);
-          ctx.reply('❌ *Terjadi kesalahan saat menambahkan server baru.*', { parse_mode: 'Markdown' });
-        } else {
-          ctx.reply(`✅ *Server baru dengan domain ${domain} telah berhasil ditambahkan.*\n\n📄 *Detail Server:*\n- Domain: ${domain}\n- Auth: ${auth}\n- Nama Server: ${nama_server}\n- Quota: ${quota}\n- Limit IP: ${iplimit}\n- Batas Create Akun: ${batas_create_akun}\n- Harga: Rp ${harga}`, { parse_mode: 'Markdown' });
-        }
-      });
-    } catch (error) {
-      logger.error('Error saat menambahkan server:', error);
-      await ctx.reply('❌ *Terjadi kesalahan saat menambahkan server baru.*', { parse_mode: 'Markdown' });
-    }
-    delete userState[ctx.chat.id];
+    const handledTextAddServerFlow = await handleTextAddServerFlow(ctx, {
+      state,
+      text,
+      db,
+      logger,
+      userState,
+    });
+    if (handledTextAddServerFlow) return;
   }
 // === 🏷️ TAMBAH SERVER UNTUK RESELLER ===
-if (state && state.step === 'reseller_domain') {
-  state.domain = text;
-  state.step = 'reseller_auth';
-  return ctx.reply('🔑 Masukkan auth server:');
-}
-
-if (state && state.step === 'reseller_auth') {
-  state.auth = text;
-  state.step = 'reseller_harga';
-  return ctx.reply('💰 Masukkan harga server (angka):');
-}
-
-if (state && state.step === 'reseller_harga') {
-  state.harga = text;
-  state.step = 'reseller_nama';
-  return ctx.reply('📝 Masukkan nama server:');
-}
-
-if (state && state.step === 'reseller_nama') {
-  state.nama_server = text;
-  state.step = 'reseller_quota';
-  return ctx.reply('📊 Masukkan quota (GB):');
-}
-
-if (state && state.step === 'reseller_quota') {
-  state.quota = text;
-  state.step = 'reseller_iplimit';
-  return ctx.reply('📶 Masukkan IP limit:');
-}
-
-if (state && state.step === 'reseller_iplimit') {
-  state.iplimit = text;
-  state.step = 'reseller_batas';
-  return ctx.reply('🔢 Masukkan batas create akun:');
-}
-
-if (state && state.step === 'reseller_batas') {
-  state.batas_create_akun = text;
-
-  db.run(
-    `INSERT INTO Server (domain, auth, harga, nama_server, quota, iplimit, batas_create_akun, total_create_akun, is_reseller_only)
-     VALUES (?, ?, ?, ?, ?, ?, ?, 0, 1)`,
-    [
-      state.domain,
-      state.auth,
-      parseInt(state.harga),
-      state.nama_server,
-      parseInt(state.quota),
-      parseInt(state.iplimit),
-      parseInt(state.batas_create_akun),
-    ],
-    (err) => {
-      if (err) {
-        logger.error('❌ Gagal menambah server reseller:', err.message);
-        ctx.reply('❌ Gagal menambah server reseller.');
-      } else {
-        ctx.reply(
-          `✅ Server reseller *${state.nama_server}* berhasil ditambahkan!`,
-          { parse_mode: 'Markdown' }
-        );
-      }
-      delete userState[ctx.chat.id];
-    }
-  );
-  return;
-}
-// === 💰 TAMBAH SALDO (LANGKAH 1: INPUT USER ID) ===
-if (state && state.step === 'addsaldo_userid') {
-  state.targetId = text.trim();
-  state.step = 'addsaldo_amount';
-  return ctx.reply('💰 Masukkan jumlah saldo yang ingin ditambahkan:');
-}
-
-// === 💰 TAMBAH SALDO (LANGKAH 1: INPUT USER ID) ===
-if (state && state.step === 'addsaldo_userid') {
-  state.targetId = text.trim();
-  state.step = 'addsaldo_amount';
-  return ctx.reply('💰 Masukkan jumlah saldo yang ingin ditambahkan:');
-}
-
-// === 💰 TAMBAH SALDO (LANGKAH 2: INPUT JUMLAH SALDO) ===
-if (state && state.step === 'addsaldo_amount') {
-  const amount = parseInt(text.trim());
-  if (isNaN(amount) || amount <= 0) {
-    return ctx.reply('⚠️ Jumlah saldo harus berupa angka dan lebih dari 0.');
-  }
-
-  const targetId = state.targetId;
-
-// Tambahkan saldo
-db.run('UPDATE users SET saldo = saldo + ? WHERE user_id = ?', [amount, targetId], (err) => {
-  if (err) {
-    logger.error('❌ Gagal menambah saldo:', err.message);
-    return ctx.reply('❌ Gagal menambah saldo ke user.');
-  }
-
-          // Ambil saldo terbaru
-      db.get(
-        'SELECT saldo FROM users WHERE user_id = ?',
-        [targetId],
-        (err2, updated) => {
-          const safeTargetId = Number(targetId);
-
-          if (err2 || !updated) {
-            // 🧾 Catat transaksi saldo
-            recordSaldoTransaction(
-              safeTargetId,
-              amount,
-              'manual_addsaldo',
-              `addsaldo_by_${ctx.from.id}`
-            );
-
-            // 📩 Notif ke user
-bot.telegram
-  .sendMessage(
-    safeTargetId,
-    '💰 Saldo kamu telah <b>ditambahkan</b> sebesar <b>Rp ' + amount.toLocaleString() + '</b>.\n' +
-      '💳 Silakan cek saldo kamu di bot.',
-    { parse_mode: 'HTML' }
-  )
-  .catch((e) => {
-    logger.error(
-      '❌ Gagal mengirim notif saldo masuk ke user (menu tambah_saldo, saldo tidak terbaca):',
-      e.message
-    );
-  });
-
-
-            // 🎯 Balas ke admin
-            ctx.reply(
-              `✅ Saldo sebesar Rp${amount.toLocaleString()} berhasil ditambahkan ke user ${targetId}.`
-            );
-            logger.info(
-              `Admin ${ctx.from.id} menambah saldo Rp${amount} ke user ${targetId} (gagal membaca saldo terbaru).`
-            );
-          } else {
-            // 🧾 Catat transaksi saldo
-            recordSaldoTransaction(
-              safeTargetId,
-              amount,
-              'manual_addsaldo',
-              `addsaldo_by_${ctx.from.id}`
-            );
-
-            // 📩 Notif ke user
-bot.telegram
-  .sendMessage(
-    safeTargetId,
-    '💰 Saldo kamu telah <b>ditambahkan</b> sebesar <b>Rp ' + amount.toLocaleString() + '</b>.\n' +
-      '💳 Saldo sekarang: <b>Rp ' + updated.saldo.toLocaleString() + '</b>.',
-    { parse_mode: 'HTML' }
-  )
-  .catch((e) => {
-    logger.error(
-      '❌ Gagal mengirim notif saldo masuk ke user (menu tambah_saldo):',
-      e.message
-    );
-  });
-
-
-            // 🎯 Balas ke admin
-            ctx.reply(
-              `✅ Saldo sebesar Rp${amount.toLocaleString()} berhasil ditambahkan ke user ${targetId}.\n` +
-                `💳 Saldo sekarang: Rp${updated.saldo.toLocaleString()}`
-            );
-            logger.info(
-              `Admin ${ctx.from.id} menambah saldo Rp${amount} ke user ${targetId} (Saldo akhir: Rp${updated.saldo}).`
-            );
-          }
-
-          // 📨 NOTIF KE GRUP (LOG TOPUP MANUAL) – dipanggil kalau GROUP_ID ada
-          try {
-            if (NOTIF_TOPUP_GROUP && typeof GROUP_ID !== 'undefined' && GROUP_ID) {
-              (async () => {
-                try {
-                  // Nama admin
-                  const adminName = ctx.from.username
-                    ? '@' + ctx.from.username
-                    : (ctx.from.first_name || ctx.from.id);
-
-                  // Info user yang di-topup
-                  let targetInfo;
-                  try {
-                    targetInfo = await bot.telegram.getChat(safeTargetId);
-                  } catch (e) {
-                    targetInfo = {};
-                  }
-
-                  const targetName = targetInfo.username
-                    ? '@' + targetInfo.username
-                    : (targetInfo.first_name || String(safeTargetId));
-
-                  const waktu = new Date().toLocaleString('id-ID', {
-                    timeZone: 'Asia/Jayapura',
-                    year: 'numeric',
-                    month: '2-digit',
-                    day: '2-digit',
-                    hour: '2-digit',
-                    minute: '2-digit'
-                  });
-
-                  const notifTopup =
-                    '<blockquote>\n' +
-                    '━━━━━ TOPUP MANUAL ━━━━━\n\n' +
-					'<code>\n' + // <-- MULAI BLOK MONOSPACE
-                    'User   : ' + targetName + ' (' + safeTargetId + ')\n' +
-                    'Topup  : Rp ' + amount.toLocaleString() + '\n' +
-                    'Status : SUCCESS\n' +
-                    'Tanggal: ' + waktu + '\n' +
-					'</code>\n' + // <-- AKHIR BLOK MONOSPACE
-                    '━━━━━━━━━━━━━━━━━━━━\n' +
-                    '</blockquote>';
-
-                  await bot.telegram.sendMessage(
-                    GROUP_ID,
-                    notifTopup,
-                    { parse_mode: 'HTML' }
-                  );
-                } catch (e) {
-                  logger.error('❌ Gagal kirim notif topup manual ke grup:', e.message);
-                }
-              })();
-            }
-          } catch (e) {
-            logger.error('❌ Error umum saat proses notif grup topup manual:', e.message);
-          }
-        }
-      );
-
-  delete userState[ctx.from.id];
+const handledTextResellerAddServerFlow = await handleTextResellerAddServerFlow(ctx, {
+  state,
+  text,
+  db,
+  logger,
+  userState,
 });
-
-  return;
-}
+if (handledTextResellerAddServerFlow) return;
+// === TAMBAH SALDO (FLOW TEXT) ===
+const handledTextAddSaldoFlow = await handleTextAddSaldoFlow(ctx, {
+  state,
+  text,
+  db,
+  logger,
+  userState,
+  recordSaldoTransaction,
+  bot,
+  GROUP_ID,
+  NOTIF_TOPUP_GROUP,
+});
+if (handledTextAddSaldoFlow) return;
 });
 ////////
 bot.action('addserver', async (ctx) => {
