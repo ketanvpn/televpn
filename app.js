@@ -13,6 +13,7 @@ const {
 } = require('./src/services/qrisUtils');
 const { createGopayQrisApi } = require('./src/services/gopayQrisApi');
 const { createQrisInvoiceStatusService } = require('./src/services/qrisInvoiceStatusService');
+const { createQrisPaymentFinalizeService } = require('./src/services/qrisPaymentFinalizeService');
 
 
 // Helper sederhana untuk jeda (dipakai di broadcast)
@@ -516,6 +517,14 @@ const qrisInvoiceStatusService = createQrisInvoiceStatusService({
   getQrisPaymentByInvoiceId,
   fetchGopayQrisStatus,
   timeoutMin: QRIS_PAYMENT_TIMEOUT_MIN,
+});
+const qrisPaymentFinalizeService = createQrisPaymentFinalizeService({
+  run,
+  getQrisPaymentById,
+  markQrisPaymentAsPaidById,
+  addUserSaldo,
+  insertTransaction,
+  getTransactionByReferenceId,
 });
 // ====================== END SECTION: PAYMENT CONFIG & QRIS ===================
 
@@ -1382,145 +1391,17 @@ async function getUserSaldo(db, userId) {
 
 
 async function finalizeQrisPayment({ paymentRow, matchedTx, transactionType = 'qris_auto_topup', transactionRef = null }) {
-  const row = paymentRow || {};
-  const tx = matchedTx || {};
-
-  const paymentId = Number(row.id || 0);
-  const userId = Number(row.user_id || 0);
-  const invoiceId = String(row.invoice_id || '').trim();
-  const baseAmount = Number(row.base_amount || row.amount || 0);
-  const paidAt = (() => {
-    const raw =
-      tx.transaction_time ||
-      tx.time ||
-      tx.paid_at ||
-      tx.timestamp ||
-      Date.now();
-    const parsed =
-      typeof raw === 'number'
-        ? raw
-        : new Date(String(raw).replace(' ', 'T')).getTime();
-    return Number.isFinite(parsed) && parsed > 0 ? parsed : Date.now();
-  })();
-  const matchedAt = Date.now();
-  const providerPayloadJson = (() => {
-    try { return JSON.stringify(tx); } catch (_) { return null; }
-  })();
-
-  if (!paymentId || !userId || !invoiceId || !Number.isFinite(baseAmount) || baseAmount <= 0) {
-    throw new Error('Data finalize QRIS tidak valid');
-  }
-
-  return await new Promise((resolve, reject) => {
-    db.serialize(() => {
-      db.run('BEGIN IMMEDIATE TRANSACTION', (err) => {
-        if (err) return reject(err);
-
-        getQrisPaymentById(db, paymentId)
-          .then((current) => {
-            if (!current) {
-              return db.run('ROLLBACK', () => reject(new Error('Invoice QRIS tidak ditemukan')));
-            }
-            if (String(current.status || '').toLowerCase() === 'paid') {
-              return db.run('ROLLBACK', () => resolve({ applied: false, alreadyPaid: true, paidAt: current.paid_at || null }));
-            }
-
-            markQrisPaymentAsPaidById(db, paymentId, {
-              paid_at: paidAt,
-              matched_at: matchedAt,
-              provider_tx_id: tx.transaction_id || tx.id || null,
-              provider_tx_time: tx.transaction_time || tx.time || null,
-              provider_payment_type: tx.payment_type || 'qris',
-              provider_issuer: tx.issuer || 'gopay',
-              provider_status: tx.transaction_status || tx.status || null,
-              provider_payload_json: providerPayloadJson,
-            })
-              .then((upd) => {
-                if (!upd.changes) {
-                  return db.run('ROLLBACK', () => resolve({ applied: false, alreadyPaid: true, paidAt: current.paid_at || null }));
-                }
-
-                addUserSaldo(db, userId, baseAmount)
-                  .then((saldoRes) => {
-                    if (!saldoRes.changes) {
-                      return db.run('ROLLBACK', () => reject(new Error('User untuk topup QRIS tidak ditemukan')));
-                    }
-
-                    insertTransaction(db, {
-                      userId,
-                      amount: baseAmount,
-                      type: transactionType,
-                      referenceId: transactionRef || `qris_${invoiceId}`,
-                      timestamp: matchedAt,
-                    })
-                      .then(() => {
-                        db.run('COMMIT', (err4) => {
-                          if (err4) return reject(err4);
-                          resolve({ applied: true, alreadyPaid: false, paidAt, matchedAt });
-                        });
-                      })
-                      .catch((err3) => db.run('ROLLBACK', () => reject(err3)));
-                  })
-                  .catch((err2) => db.run('ROLLBACK', () => reject(err2)));
-              })
-              .catch((err1) => db.run('ROLLBACK', () => reject(err1)));
-          })
-          .catch((err0) => db.run('ROLLBACK', () => reject(err0)));
-      });
-    });
+  return qrisPaymentFinalizeService.finalizeQrisPayment(db, {
+    paymentRow,
+    matchedTx,
+    transactionType,
+    transactionRef,
   });
 }
 
 
 async function applyQrisTopupBonus(userId, invoiceId, bonusAmount) {
-  const uid = Number(userId || 0);
-  const bonus = Number(bonusAmount || 0);
-  const inv = String(invoiceId || '').trim();
-  const refId = `qris_bonus_${inv}`;
-  const now = Date.now();
-
-  if (!uid || !inv || !Number.isFinite(bonus) || bonus <= 0) {
-    return { applied: false, skipped: true };
-  }
-
-  return await new Promise((resolve, reject) => {
-    db.serialize(() => {
-      db.run('BEGIN IMMEDIATE TRANSACTION', (err) => {
-        if (err) return reject(err);
-
-        getTransactionByReferenceId(db, refId)
-          .then((existing) => {
-            if (existing) {
-              return db.run('ROLLBACK', () => resolve({ applied: false, alreadyApplied: true }));
-            }
-
-            addUserSaldo(db, uid, bonus)
-              .then((saldoRes) => {
-                if (!saldoRes.changes) {
-                  return db.run('ROLLBACK', () => reject(new Error('User bonus QRIS tidak ditemukan')));
-                }
-
-                insertTransaction(db, {
-                  userId: uid,
-                  amount: bonus,
-                  type: 'qris_topup_bonus',
-                  referenceId: refId,
-                  timestamp: now,
-                })
-                  .then(() => {
-                    db.run('COMMIT', (err3) => {
-                      if (err3) return reject(err3);
-                      resolve({ applied: true, alreadyApplied: false, refId });
-                    });
-                  })
-                  .catch((err2) => db.run('ROLLBACK', () => reject(err2)));
-              })
-              .catch((err1) => db.run('ROLLBACK', () => reject(err1)));
-          })
-          .catch((err0) => db.run('ROLLBACK', () => reject(err0)));
-      });
-    });
-  });
+  return qrisPaymentFinalizeService.applyQrisTopupBonus(db, userId, invoiceId, bonusAmount);
 }
 
 async function notifyTopupSuccess({ bot, db, userId, baseAmount, bonusAmount, percent, ref, method }) {
