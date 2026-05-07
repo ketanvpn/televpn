@@ -16,6 +16,7 @@ const { createQrisInvoiceStatusService } = require('./src/services/qrisInvoiceSt
 const { createQrisPaymentFinalizeService } = require('./src/services/qrisPaymentFinalizeService');
 const { createQrisNotificationService } = require('./src/services/qrisNotificationService');
 const { createQrisInvoiceBuilderService } = require('./src/services/qrisInvoiceBuilderService');
+const { createQrisPollingService } = require('./src/services/qrisPollingService');
 const {
   buildStaticQrisImageUrl,
   buildDynamicQrisPayload,
@@ -546,6 +547,18 @@ const qrisInvoiceBuilderService = createQrisInvoiceBuilderService({
   parseProviderTransactionTime,
   qrisAutoTopupMax: QRIS_AUTO_TOPUP_MAX,
   qrisPaymentTimeoutMin: QRIS_PAYMENT_TIMEOUT_MIN,
+});
+const qrisPollingService = createQrisPollingService({
+  process,
+  globalState: global,
+  countPendingQrisPayments,
+  markQrisPaymentStatusById,
+  listRecentPendingQrisPayments,
+  checkQrisInvoiceStatus,
+  finalizeQrisPayment,
+  calculateTopupBonus,
+  applyQrisTopupBonus,
+  notifyTopupSuccess,
 });
 // ====================== END SECTION: PAYMENT CONFIG & QRIS ===================
 
@@ -13573,175 +13586,10 @@ if (EXPIRE_DATE) {
 
 
 function startQrisPaymentPolling(bot, db, logger) {
-  const IS_PRIMARY_INSTANCE = !process.env.NODE_APP_INSTANCE || process.env.NODE_APP_INSTANCE === '0';
-  const qrisPollIntervalMs = Number(QRIS_CHECK_INTERVAL_MS || 15000);
-  if (!IS_PRIMARY_INSTANCE) {
-    logger.info('ℹ️ QRIS polling nonaktif di instance non-primary (PM2 cluster).');
-    return;
-  }
-  if (global.__qrisPollStarted) {
-    logger.info(`ℹ️ QRIS polling sudah aktif. Interval=${qrisPollIntervalMs}ms`);
-    return;
-  }
-
-  async function getPendingQrisCount() {
-    return countPendingQrisPayments(db).catch(() => -1);
-  }
-
-  async function markQrisStatus(id, status, paidAt = null) {
-    return markQrisPaymentStatusById(db, id, status, paidAt);
-  }
-
-  async function pollQrisPaymentsStartup() {
-    if (global.__pollQrisRunning) return;
-    global.__pollQrisRunning = true;
-    try {
-      const now = Date.now();
-      const timeoutMin = Number(QRIS_PAYMENT_TIMEOUT_MIN || 10);
-      const cutoff = now - ((timeoutMin + 15) * 60 * 1000);
-      const rows = await listRecentPendingQrisPayments(db, cutoff, 50);
-
-      if (!rows.length) return;
-
-      logger.info(`🔎 Poll QRIS GoPay: cek ${rows.length} transaksi pending...`);
-
-      for (const row of rows) {
-        const expiresAt = Number(row.created_at) + (timeoutMin * 60 * 1000);
-        if (now > expiresAt) {
-          await markQrisStatus(row.id, 'expired');
-          try {
-            await bot.telegram.sendMessage(
-              row.user_id,
-              `⏰ <b>QRIS EXPIRED</b>
-` +
-                `━━━━━━━━━━━━━━━━
-` +
-                `QR sudah tidak berlaku (melewati batas waktu).
-` +
-                `Silakan buat QRIS baru untuk topup.
-` +
-                `━━━━━━━━━━━━━━━━
-` +
-                `Invoice: <code>${row.invoice_id}</code>`,
-              {
-                parse_mode: 'HTML',
-                reply_markup: {
-                  inline_keyboard: [
-                    [{ text: '💳 Buat QRIS Baru', callback_data: 'topupqris_btn' }],
-                    [{ text: '🏠 Menu Utama', callback_data: 'send_main_menu' }],
-                  ],
-                },
-              }
-            );
-          } catch (_) {}
-          logger.info(`⌛ QRIS expired: invoice=${row.invoice_id} user=${row.user_id}`);
-          continue;
-        }
-
-        const checkRes = await checkQrisInvoiceStatus(row.invoice_id, Number(row.amount), row.created_at);
-        if (checkRes.status === 'EXPIRED') {
-          await markQrisStatus(row.id, 'expired');
-          try {
-            await bot.telegram.sendMessage(
-              row.user_id,
-              `⏰ <b>QRIS EXPIRED</b>
-` +
-                `━━━━━━━━━━━━━━━━
-` +
-                `QR sudah tidak berlaku (melewati batas waktu).
-` +
-                `Silakan buat QRIS baru untuk topup.
-` +
-                `━━━━━━━━━━━━━━━━
-` +
-                `Invoice: <code>${row.invoice_id}</code>`,
-              {
-                parse_mode: 'HTML',
-                reply_markup: {
-                  inline_keyboard: [
-                    [{ text: '💳 Buat QRIS Baru', callback_data: 'topupqris_btn' }],
-                    [{ text: '🏠 Menu Utama', callback_data: 'send_main_menu' }],
-                  ],
-                },
-              }
-            );
-          } catch (_) {}
-          logger.info(`⌛ QRIS expired: invoice=${row.invoice_id} user=${row.user_id}`);
-          continue;
-        }
-        if (checkRes.status === 'CANCELED') {
-          await markQrisStatus(row.id, 'canceled');
-          logger.info(`🚫 QRIS canceled: invoice=${row.invoice_id} user=${row.user_id}`);
-          continue;
-        }
-        if (checkRes.status !== 'PAID' || !checkRes.transaction) continue;
-
-        const finalRes = await finalizeQrisPayment({
-          paymentRow: row,
-          matchedTx: checkRes.transaction,
-          transactionType: 'qris_auto_topup',
-          transactionRef: `qris_auto_${row.invoice_id}`,
-        });
-        if (!finalRes.applied) continue;
-
-        const addSaldo = Number(row.base_amount);
-        try {
-          const { bonus, percent } = calculateTopupBonus(addSaldo);
-          if (bonus > 0) {
-            try {
-              await applyQrisTopupBonus(row.user_id, row.invoice_id, bonus);
-            } catch (e) {
-              logger.error(`⚠️ Gagal mencatat bonus QRIS: ${e?.message || e}`);
-            }
-            await notifyTopupSuccess({
-              bot,
-              db,
-              userId: row.user_id,
-              baseAmount: addSaldo,
-              bonusAmount: bonus,
-              percent,
-              ref: row.invoice_id,
-              method: 'QRIS GoPay',
-            });
-          } else {
-            await notifyTopupSuccess({
-              bot,
-              db,
-              userId: row.user_id,
-              baseAmount: addSaldo,
-              bonusAmount: 0,
-              percent: 0,
-              ref: row.invoice_id,
-              method: 'QRIS GoPay',
-            });
-          }
-        } catch (e) {
-          logger.error(`⚠️ Gagal kirim notif topup sukses: ${e?.message || e}`);
-        }
-
-        logger.info(`✅ QRIS PAID: invoice=${row.invoice_id} user=${row.user_id} billed=${row.amount} add=${addSaldo} tx=${finalRes.providerTxId || '-'} `);
-      }
-    } catch (e) {
-      logger.error(`❌ pollQrisPayments fatal: ${e?.message || e}`);
-    } finally {
-      global.__pollQrisRunning = false;
-    }
-  }
-
-  global.__qrisPollStarted = true;
-  global.__qrisPollInterval = setInterval(pollQrisPaymentsStartup, qrisPollIntervalMs);
-  setTimeout(() => { pollQrisPaymentsStartup().catch(() => {}); }, 2000);
-  getPendingQrisCount()
-    .then((pendingCount) => {
-      if (pendingCount >= 0) {
-        logger.info(`✅ QRIS polling aktif. Interval=${qrisPollIntervalMs}ms, pending=${pendingCount}, source=startup`);
-      } else {
-        logger.info(`✅ QRIS polling aktif. Interval=${qrisPollIntervalMs}ms, source=startup`);
-      }
-    })
-    .catch(() => {
-      logger.info(`✅ QRIS polling aktif. Interval=${qrisPollIntervalMs}ms, source=startup`);
-    });
+  return qrisPollingService.startQrisPaymentPolling(bot, db, logger, {
+    qrisCheckIntervalMs: QRIS_CHECK_INTERVAL_MS,
+    qrisPaymentTimeoutMin: QRIS_PAYMENT_TIMEOUT_MIN,
+  });
 }
 
 // Jalankan bot
