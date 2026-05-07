@@ -14,6 +14,7 @@ const {
 const { createGopayQrisApi } = require('./src/services/gopayQrisApi');
 const { createQrisInvoiceStatusService } = require('./src/services/qrisInvoiceStatusService');
 const { createQrisPaymentFinalizeService } = require('./src/services/qrisPaymentFinalizeService');
+const { createQrisNotificationService } = require('./src/services/qrisNotificationService');
 
 
 // Helper sederhana untuk jeda (dipakai di broadcast)
@@ -525,6 +526,13 @@ const qrisPaymentFinalizeService = createQrisPaymentFinalizeService({
   addUserSaldo,
   insertTransaction,
   getTransactionByReferenceId,
+});
+const qrisNotificationService = createQrisNotificationService({
+  getUserSaldo,
+  rupiah,
+  notifTopupGroup: NOTIF_TOPUP_GROUP,
+  groupId: GROUP_ID,
+  groupTimeZone: 'Asia/Jayapura',
 });
 // ====================== END SECTION: PAYMENT CONFIG & QRIS ===================
 
@@ -1405,64 +1413,20 @@ async function applyQrisTopupBonus(userId, invoiceId, bonusAmount) {
 }
 
 async function notifyTopupSuccess({ bot, db, userId, baseAmount, bonusAmount, percent, ref, method }) {
-  const total = Number(baseAmount || 0) + Number(bonusAmount || 0);
-  const saldoNow = await getUserSaldo(db, userId);
-
-  // Nama user untuk notif grup (aman kalau gagal ambil)
-  let who = `UID:${userId}`;
-  try {
-    const chat = await bot.telegram.getChat(userId);
-    if (chat?.username) who = `@${chat.username}`;
-    else if (chat?.first_name) who = chat.first_name;
-  } catch {}
-
-  // 1) Notif ke user (rapi + informatif)
-  const lines = [];
-  lines.push(`✅ <b>TOPUP BERHASIL</b>`);
-  lines.push(`Metode: <b>${method || 'QRIS'}</b>`);
-  lines.push(`Nominal: <b>${rupiah(baseAmount)}</b>`);
-  if (Number(bonusAmount) > 0) {
-    lines.push(`Bonus: <b>${rupiah(bonusAmount)}</b> <i>(${percent || 0}%)</i>`);
-  }
-  lines.push(`Total masuk: <b>${rupiah(total)}</b>`);
-  if (saldoNow != null) lines.push(`Saldo sekarang: <b>${rupiah(saldoNow)}</b>`);
-  lines.push(`Ref: <code>${ref}</code>`);
-  lines.push(`\nTerima kasih 🙏`);
-
-  try {
-    await bot.telegram.sendMessage(userId, lines.join('\n'), { parse_mode: 'HTML' });
-  } catch {}
-
-// 2) Notif ke grup (kalau diaktifkan)
-try {
-  if (NOTIF_TOPUP_GROUP && GROUP_ID) {
-    const saldoMasuk = Number(baseAmount || 0) + Number(bonusAmount || 0);
-
-    const gLines = [];
-    gLines.push(`✅ <b>TOPUP SUCCESS</b>`);
-    gLines.push(`━━━━━━━━━━━━━━━━━━`);
-    gLines.push(`👤 <b>User:</b> ${who}`);
-    gLines.push(`🆔 <b>ID:</b> <code>${userId}</code>`);
-    gLines.push(`💳 <b>Metode:</b> QRIS`);
-    gLines.push(`💰 <b>Nominal:</b> ${rupiah(baseAmount)}`);
-    gLines.push(`🎁 <b>Bonus:</b> ${rupiah(bonusAmount || 0)}`);
-    gLines.push(`📥 <b>Saldo Masuk:</b> ${rupiah(saldoMasuk)}`);
-    gLines.push(`🧾 <b>Ref:</b> <code>${ref}</code>`);
-    gLines.push(`🕒 <b>Waktu:</b> ${new Date().toLocaleString('id-ID', { timeZone: 'Asia/Jayapura' })}`);
-    gLines.push(`━━━━━━━━━━━━━━━━━━`);
-
-    await bot.telegram.sendMessage(GROUP_ID, gLines.join('\n'), { parse_mode: 'HTML' });
-  }
-} catch {}
+  return qrisNotificationService.notifyTopupSuccess({
+    bot,
+    db,
+    userId,
+    baseAmount,
+    bonusAmount,
+    percent,
+    ref,
+    method,
+  });
 }
 
 async function notifyTopupExpired({ bot, userId, ref }) {
-  const txt =
-    `⏰ <b>QRIS Expired</b>\n` +
-    `Ref: <code>${ref}</code>\n` +
-    `QRIS kamu sudah lewat batas waktu.\n` +
-    `Silakan buat QRIS baru dari menu topup.`;
-  try { await bot.telegram.sendMessage(userId, txt, { parse_mode: 'HTML' }); } catch {}
+  return qrisNotificationService.notifyTopupExpired({ bot, userId, ref });
 }
 
 // ===== Helper: indikator menunggu saat proses panjang =====
