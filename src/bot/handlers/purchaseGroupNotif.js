@@ -1,3 +1,5 @@
+const { getLatestAccountByIdentity } = require('../../repositories/accountRepository');
+
 async function sendAccountPurchaseGroupNotif(ctx, deps) {
   const {
     bot,
@@ -51,18 +53,9 @@ async function sendAccountPurchaseGroupNotif(ctx, deps) {
     let sisaHari = '-';
 
     try {
-      const accountRow = await new Promise((resolve) => {
-        db.get(
-          'SELECT created_at, expires_at FROM accounts WHERE username = ? AND server_id = ? AND type = ? ORDER BY id DESC LIMIT 1',
-          [username, serverId, type],
-          (err, row) => {
-            if (err) {
-              logger.error('Gagal ambil data akun untuk notif grup:', err.message);
-              return resolve(null);
-            }
-            resolve(row);
-          }
-        );
+      const accountRow = await getLatestAccountByIdentity(db, username, serverId, type).catch((err) => {
+        logger.error('Gagal ambil data akun untuk notif grup:', err.message);
+        return null;
       });
 
       const options = { timeZone: 'Asia/Jayapura', year: 'numeric', month: '2-digit', day: '2-digit' };

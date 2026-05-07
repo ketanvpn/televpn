@@ -1,3 +1,10 @@
+const {
+  getTotalAccounts,
+  getTotalActiveAccounts,
+  getTotalExpiredAccounts,
+  getTopResellerStatsSince,
+} = require('../../repositories/accountRepository');
+
 function registerAdminUtilityActions(bot, deps) {
   const {
     logger,
@@ -234,15 +241,9 @@ function registerAdminUtilityActions(bot, deps) {
       });
 
       const [totalAccounts, totalActiveAccounts, totalExpiredAccounts] = await Promise.all([
-        new Promise((resolve) => {
-          db.get('SELECT COUNT(*) AS count FROM accounts', [], (err, row) => resolve(err ? 0 : (row ? row.count : 0)));
-        }),
-        new Promise((resolve) => {
-          db.get('SELECT COUNT(*) AS count FROM accounts WHERE expires_at IS NULL OR expires_at > ?', [nowTs], (err, row) => resolve(err ? 0 : (row ? row.count : 0)));
-        }),
-        new Promise((resolve) => {
-          db.get('SELECT COUNT(*) AS count FROM accounts WHERE expires_at IS NOT NULL AND expires_at <= ?', [nowTs], (err, row) => resolve(err ? 0 : (row ? row.count : 0)));
-        }),
+        getTotalAccounts(db).catch(() => 0),
+        getTotalActiveAccounts(db, nowTs).catch(() => 0),
+        getTotalExpiredAccounts(db, nowTs).catch(() => 0),
       ]);
 
       let resellerSet = new Set();
@@ -258,16 +259,7 @@ function registerAdminUtilityActions(bot, deps) {
         logger.error('Gagal membaca ressel.db saat monitor_panel:', e.message);
       }
 
-      const topResellerRows = await new Promise((resolve) => {
-        db.all(
-          `SELECT user_id, COUNT(*) AS total_all, SUM(CASE WHEN created_at >= ? THEN 1 ELSE 0 END) AS total_month
-           FROM accounts
-           GROUP BY user_id
-           ORDER BY total_month DESC, total_all DESC`,
-          [monthStart],
-          (err, rows) => resolve(err ? [] : (rows || []))
-        );
-      });
+      const topResellerRows = await getTopResellerStatsSince(db, monthStart).catch(() => []);
 
       const topResellers = [];
       for (const row of topResellerRows) {

@@ -107,6 +107,17 @@ const { handleTextAddServerFlow } = require('./src/bot/handlers/textAddServerFlo
 const { handleTextResellerAddServerFlow } = require('./src/bot/handlers/textResellerAddServerFlow');
 const { handleTextAddSaldoFlow } = require('./src/bot/handlers/textAddSaldoFlow');
 const { insertTransaction } = require('./src/repositories/transactionRepository');
+const { getUserSaldoById } = require('./src/repositories/userRepository');
+const {
+  getQrisPaymentByInvoiceId,
+  getLatestQrisPaymentByInvoiceId,
+  getQrisPaymentStatusByInvoiceId,
+  countPendingQrisPayments,
+  getLatestPendingQrisPaymentByUserId,
+  markQrisPaymentStatusById,
+  listRecentPendingQrisPayments,
+  insertPendingQrisPayment,
+} = require('./src/repositories/qrisPaymentRepository');
 
 const trialFile = TRIAL_DB_PATH;
 const trialConfigFile = TRIAL_CONFIG_PATH;
@@ -712,13 +723,7 @@ async function checkQrisInvoiceStatus(invoiceId, billedAmount, createdAt) {
     return { status: 'PENDING', paid_at: null, transaction: null };
   }
 
-  const paymentRow = await new Promise((resolve, reject) => {
-    db.get(
-      `SELECT * FROM qris_payments WHERE invoice_id = ? LIMIT 1`,
-      [inv],
-      (err, row) => (err ? reject(err) : resolve(row || null))
-    );
-  });
+  const paymentRow = await getQrisPaymentByInvoiceId(db, inv);
 
   if (!paymentRow) {
     throw new Error('Invoice QRIS tidak ditemukan di database');
@@ -1580,12 +1585,7 @@ async function showErrorOnMenu(ctx, htmlText) {
 }
 
 async function getUserSaldo(db, userId) {
-  return await new Promise((resolve) => {
-    db.get('SELECT saldo FROM users WHERE user_id = ?', [userId], (e, r) => {
-      if (e) return resolve(null);
-      resolve(r ? Number(r.saldo || 0) : null);
-    });
-  });
+  return getUserSaldoById(db, userId).catch(() => null);
 }
 
 
@@ -4875,13 +4875,7 @@ bot.command('cekqris', async (ctx) => {
 
   try {
     // 1. Ambil data dari DB
-    const row = await new Promise((resolve, reject) => {
-      db.get(
-        'SELECT * FROM qris_payments WHERE invoice_id = ? ORDER BY id DESC LIMIT 1',
-        [invoiceId],
-        (err, r) => (err ? reject(err) : resolve(r))
-      );
-    });
+    const row = await getLatestQrisPaymentByInvoiceId(db, invoiceId);
 
     if (!row) {
       return ctx.reply(
@@ -9498,45 +9492,37 @@ bot.action(/^qris_status:(.+)$/i, async (ctx) => {
     const invoiceId = String(ctx.match[1] || '').trim();
     if (!invoiceId) return ctx.answerCbQuery('Invoice kosong');
     await ctx.answerCbQuery('Mengecek...', { show_alert: false }).catch(() => {});
+    const row = await getQrisPaymentStatusByInvoiceId(db, invoiceId).catch(() => null);
+    if (!row) {
+      await ctx.answerCbQuery('Invoice tidak ditemukan', { show_alert: true }).catch(() => {});
+      return;
+    }
 
+    const s = String(row.status || 'pending').toUpperCase();
+    const msg =
+      `🧾 <b>Status QRIS</b>\n` +
+      `━━━━━━━━━━━━━━━━\n` +
+      `Invoice : <code>${invoiceId}</code>\n` +
+      `Status  : <b>${s}</b>\n` +
+      `━━━━━━━━━━━━━━━━\n` +
+      `Catatan: Saldo masuk otomatis saat status <b>PAID</b>.`;
 
-    db.get(
-      'SELECT status, amount, base_amount, unique_suffix, created_at, paid_at FROM qris_payments WHERE invoice_id = ? ORDER BY id DESC LIMIT 1',
-      [invoiceId],
-      async (err, row) => {
-        if (err || !row) {
-          await ctx.answerCbQuery('Invoice tidak ditemukan', { show_alert: true }).catch(() => {});
-          return;
-        }
+    // Kalau tombol ditekan dari caption foto, coba edit captionnya
+    try {
+      await ctx.editMessageCaption(msg, {
+        parse_mode: 'HTML',
+        reply_markup: {
+          inline_keyboard: [
+            [{ text: '🔎 Refresh Status', callback_data: `qris_status:${invoiceId}` }],
+            [{ text: '🏠 Menu Utama', callback_data: 'send_main_menu' }],
+          ],
+        },
+      });
+    } catch {
+      await ctx.answerCbQuery('Tidak bisa edit pesan ini. Buat QRIS baru / buka pesan QR terakhir.', { show_alert: true }).catch(() => {});
+    }
 
-        const s = String(row.status || 'pending').toUpperCase();
-        const msg =
-          `🧾 <b>Status QRIS</b>\n` +
-          `━━━━━━━━━━━━━━━━\n` +
-          `Invoice : <code>${invoiceId}</code>\n` +
-          `Status  : <b>${s}</b>\n` +
-          `━━━━━━━━━━━━━━━━\n` +
-          `Catatan: Saldo masuk otomatis saat status <b>PAID</b>.`;
-
-        // Kalau tombol ditekan dari caption foto, coba edit captionnya
-        try {
-          await ctx.editMessageCaption(msg, {
-            parse_mode: 'HTML',
-            reply_markup: {
-              inline_keyboard: [
-                [{ text: '🔎 Refresh Status', callback_data: `qris_status:${invoiceId}` }],
-                [{ text: '🏠 Menu Utama', callback_data: 'send_main_menu' }],
-              ],
-            },
-          });
-        } catch {
-          await ctx.answerCbQuery('Tidak bisa edit pesan ini. Buat QRIS baru / buka pesan QR terakhir.', { show_alert: true }).catch(() => {});
-        }
-        
-
-        await ctx.answerCbQuery('OK').catch(() => {});
-      }
-    );
+    await ctx.answerCbQuery('OK').catch(() => {});
   } catch {
     try { await ctx.answerCbQuery('Gagal cek status', { show_alert: true }); } catch {}
   }
@@ -11455,16 +11441,7 @@ processQrisTopupInvoice = async function processQrisTopupInvoice(ctx, baseAmount
     const timeoutMin = QRIS_PAYMENT_TIMEOUT_MIN || 5;
     const expireThreshold = now - timeoutMin * 60 * 1000;
 
-    const pendingRow = await new Promise((resolve, reject) => {
-      db.get(
-        `SELECT * FROM qris_payments
-         WHERE user_id = ? AND status = 'pending'
-         ORDER BY created_at DESC
-         LIMIT 1`,
-        [userId],
-        (err, row) => (err ? reject(err) : resolve(row))
-      );
-    });
+    const pendingRow = await getLatestPendingQrisPaymentByUserId(db, userId);
 
     if (pendingRow) {
       if (pendingRow.created_at >= expireThreshold) {
@@ -11478,20 +11455,12 @@ processQrisTopupInvoice = async function processQrisTopupInvoice(ctx, baseAmount
         return;
       }
 
-      db.run(
-        `UPDATE qris_payments
-         SET status = 'expired'
-         WHERE id = ? AND status = 'pending'`,
-        [pendingRow.id],
-        (err) => {
-          if (err) {
-            logger.error(
-              '⚠️ Gagal meng-update qris_payments ke expired dari handler nominal:',
-              err
-            );
-          }
-        }
-      );
+      await markQrisPaymentStatusById(db, pendingRow.id, 'expired').catch((err) => {
+        logger.error(
+          '⚠️ Gagal meng-update qris_payments ke expired dari handler nominal:',
+          err
+        );
+      });
     }
   } catch (e) {
     logger.error('⚠️ Error saat cek invoice pending QRIS:', e);
@@ -11507,13 +11476,7 @@ processQrisTopupInvoice = async function processQrisTopupInvoice(ctx, baseAmount
     );
 
     async function markQrisStatus(id, status, paidAt = null) {
-      return await new Promise((resolve) => {
-        if (paidAt) {
-          db.run(`UPDATE qris_payments SET status=?, paid_at=? WHERE id=?`, [status, paidAt, id], () => resolve());
-        } else {
-          db.run(`UPDATE qris_payments SET status=? WHERE id=?`, [status, id], () => resolve());
-        }
-      });
+      return markQrisPaymentStatusById(db, id, status, paidAt);
     }
 
     async function pollQrisPayments() {
@@ -11522,18 +11485,8 @@ processQrisTopupInvoice = async function processQrisTopupInvoice(ctx, baseAmount
       try {
         const now = Date.now();
         const timeoutMin = Number(QRIS_PAYMENT_TIMEOUT_MIN || 10);
-        const rows = await new Promise((resolve, reject) => {
-          const cutoff = now - ((timeoutMin + 15) * 60 * 1000);
-          db.all(
-            `SELECT id, user_id, invoice_id, amount, base_amount, unique_suffix, created_at
-             FROM qris_payments
-             WHERE status='pending' AND created_at >= ?
-             ORDER BY created_at ASC
-             LIMIT 50`,
-            [cutoff],
-            (err, rows) => (err ? reject(err) : resolve(rows || []))
-          );
-        });
+        const cutoff = now - ((timeoutMin + 15) * 60 * 1000);
+        const rows = await listRecentPendingQrisPayments(db, cutoff, 50);
 
         if (!rows.length) return;
 
@@ -11645,40 +11598,19 @@ processQrisTopupInvoice = async function processQrisTopupInvoice(ctx, baseAmount
       try { return JSON.stringify(invoice.raw || {}); } catch (_) { return null; }
     })();
 
-    await new Promise((resolve, reject) => {
-      db.run(
-        `INSERT INTO qris_payments (
-           user_id,
-           invoice_id,
-           amount,
-           base_amount,
-           unique_suffix,
-           status,
-           created_at,
-           provider_tx_id,
-           provider_tx_time,
-           provider_payment_type,
-           provider_issuer,
-           provider_status,
-           provider_payload_json
-         )
-         VALUES (?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?, ?, ?, ?)`,
-        [
-          userId,
-          invoice.invoice_id,
-          invoice.amount,
-          invoice.base_amount,
-          invoice.unique_suffix,
-          now,
-          invoice.provider_transaction_id || null,
-          invoice.provider_transaction_time || null,
-          invoice.provider_payment_type || 'qris',
-          invoice.provider_issuer || 'gopay',
-          invoice.provider_status || 'pending',
-          providerPayloadJson,
-        ],
-        (err) => (err ? reject(err) : resolve())
-      );
+    await insertPendingQrisPayment(db, {
+      user_id: userId,
+      invoice_id: invoice.invoice_id,
+      amount: invoice.amount,
+      base_amount: invoice.base_amount,
+      unique_suffix: invoice.unique_suffix,
+      created_at: now,
+      provider_tx_id: invoice.provider_transaction_id || null,
+      provider_tx_time: invoice.provider_transaction_time || null,
+      provider_payment_type: invoice.provider_payment_type || 'qris',
+      provider_issuer: invoice.provider_issuer || 'gopay',
+      provider_status: invoice.provider_status || 'pending',
+      provider_payload_json: providerPayloadJson,
     });
 
     let caption =
@@ -14247,22 +14179,11 @@ function startQrisPaymentPolling(bot, db, logger) {
   }
 
   async function getPendingQrisCount() {
-    return await new Promise((resolve) => {
-      db.get(`SELECT COUNT(*) AS cnt FROM qris_payments WHERE status='pending'`, [], (err, row) => {
-        if (err) return resolve(-1);
-        resolve(Number(row?.cnt || 0));
-      });
-    });
+    return countPendingQrisPayments(db).catch(() => -1);
   }
 
   async function markQrisStatus(id, status, paidAt = null) {
-    return await new Promise((resolve) => {
-      if (paidAt) {
-        db.run(`UPDATE qris_payments SET status=?, paid_at=? WHERE id=?`, [status, paidAt, id], () => resolve());
-      } else {
-        db.run(`UPDATE qris_payments SET status=? WHERE id=?`, [status, id], () => resolve());
-      }
-    });
+    return markQrisPaymentStatusById(db, id, status, paidAt);
   }
 
   async function pollQrisPaymentsStartup() {
@@ -14271,18 +14192,8 @@ function startQrisPaymentPolling(bot, db, logger) {
     try {
       const now = Date.now();
       const timeoutMin = Number(QRIS_PAYMENT_TIMEOUT_MIN || 10);
-      const rows = await new Promise((resolve, reject) => {
-        const cutoff = now - ((timeoutMin + 15) * 60 * 1000);
-        db.all(
-          `SELECT id, user_id, invoice_id, amount, base_amount, unique_suffix, created_at
-           FROM qris_payments
-           WHERE status='pending' AND created_at >= ?
-           ORDER BY created_at ASC
-           LIMIT 50`,
-          [cutoff],
-          (err, rows) => (err ? reject(err) : resolve(rows || []))
-        );
-      });
+      const cutoff = now - ((timeoutMin + 15) * 60 * 1000);
+      const rows = await listRecentPendingQrisPayments(db, cutoff, 50);
 
       if (!rows.length) return;
 
