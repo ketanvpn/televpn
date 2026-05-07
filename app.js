@@ -1633,34 +1633,28 @@ async function finalizeQrisPayment({ paymentRow, matchedTx, transactionType = 'q
                   return db.run('ROLLBACK', () => resolve({ applied: false, alreadyPaid: true, paidAt: current.paid_at || null }));
                 }
 
-                db.run(
-                  'UPDATE users SET saldo = saldo + ? WHERE user_id = ?',
-                  [baseAmount, userId],
-                  function (err2) {
-                    if (err2) {
-                      return db.run('ROLLBACK', () => reject(err2));
-                    }
-                    if (!this.changes) {
+                addUserSaldo(db, userId, baseAmount)
+                  .then((saldoRes) => {
+                    if (!saldoRes.changes) {
                       return db.run('ROLLBACK', () => reject(new Error('User untuk topup QRIS tidak ditemukan')));
                     }
 
-                    db.run(
-                      `INSERT INTO transactions (user_id, amount, type, reference_id, timestamp)
-                       VALUES (?, ?, ?, ?, ?)`,
-                      [userId, baseAmount, transactionType, transactionRef || `qris_${invoiceId}`, matchedAt],
-                      (err3) => {
-                        if (err3) {
-                          return db.run('ROLLBACK', () => reject(err3));
-                        }
-
+                    insertTransaction(db, {
+                      userId,
+                      amount: baseAmount,
+                      type: transactionType,
+                      referenceId: transactionRef || `qris_${invoiceId}`,
+                      timestamp: matchedAt,
+                    })
+                      .then(() => {
                         db.run('COMMIT', (err4) => {
                           if (err4) return reject(err4);
                           resolve({ applied: true, alreadyPaid: false, paidAt, matchedAt });
                         });
-                      }
-                    );
-                  }
-                );
+                      })
+                      .catch((err3) => db.run('ROLLBACK', () => reject(err3)));
+                  })
+                  .catch((err2) => db.run('ROLLBACK', () => reject(err2)));
               })
               .catch((err1) => db.run('ROLLBACK', () => reject(err1)));
           })
