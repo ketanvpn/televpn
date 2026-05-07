@@ -92,6 +92,26 @@ async function deleteAccountById(db, accountId) {
   return run(db, 'DELETE FROM accounts WHERE id = ?', [accountId]);
 }
 
+async function getLatestAccountByOwnerIdentity(db, userId, username, type, serverId) {
+  return getOne(
+    db,
+    'SELECT id, created_at, expires_at FROM accounts WHERE user_id = ? AND username = ? AND type = ? AND server_id = ? ORDER BY id DESC LIMIT 1',
+    [userId, username, type, serverId]
+  );
+}
+
+async function updateAccountDatesById(db, accountId, createdAt, expiresAt) {
+  return run(db, 'UPDATE accounts SET created_at = ?, expires_at = ? WHERE id = ?', [createdAt, expiresAt, accountId]);
+}
+
+async function insertAccountRecord(db, userId, username, type, serverId, createdAt, expiresAt) {
+  return run(
+    db,
+    'INSERT INTO accounts (user_id, username, type, server_id, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)',
+    [userId, username, type, serverId, createdAt, expiresAt]
+  );
+}
+
 module.exports = {
   getTotalAccounts,
   getTotalActiveAccounts,
@@ -103,4 +123,7 @@ module.exports = {
   getAccountDetailWithServerById,
   getLatestAccountByIdentity,
   deleteAccountById,
+  getLatestAccountByOwnerIdentity,
+  updateAccountDatesById,
+  insertAccountRecord,
 };

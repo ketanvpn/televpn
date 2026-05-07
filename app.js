@@ -123,6 +123,9 @@ const {
 const { run } = require('./src/repositories/sqliteRepo');
 const {
   getAccountsWithServerPriceByUserCreatedBetween,
+  getLatestAccountByOwnerIdentity,
+  updateAccountDatesById,
+  insertAccountRecord,
 } = require('./src/repositories/accountRepository');
 const {
   getQrisPaymentByInvoiceId,
@@ -13974,55 +13977,36 @@ function upsertAccount(userId, username, type, serverId, expDays) {
     addMs = expDays * dayMs;
   }
 
-  db.get(
-    'SELECT id, created_at, expires_at FROM accounts WHERE user_id = ? AND username = ? AND type = ? AND server_id = ? ORDER BY id DESC LIMIT 1',
-    [userId, username, type, serverId],
-    (err, row) => {
-      if (err) {
-        logger.error('Kesalahan saat membaca tabel accounts:', err.message);
-        return;
-      }
-
+  getLatestAccountByOwnerIdentity(db, userId, username, type, serverId)
+    .then((row) => {
       if (row) {
-        // ==== RENEW: akun sudah ada, kita TAMBAH hari ====
-        const oldCreated  = row.created_at || nowTs;
-        const oldExpires  = row.expires_at || nowTs;
+        const oldCreated = row.created_at || nowTs;
+        const oldExpires = row.expires_at || nowTs;
+        const baseTs = oldExpires > nowTs ? oldExpires : nowTs;
+        const newExpires = baseTs + addMs;
 
-        // Kalau expired lama masih di depan, tambah dari sana.
-        // Kalau sudah lewat, mulai dari sekarang.
-        const baseTs      = oldExpires > nowTs ? oldExpires : nowTs;
-        const newExpires  = baseTs + addMs;
-
-        db.run(
-          'UPDATE accounts SET created_at = ?, expires_at = ? WHERE id = ?',
-          [oldCreated, newExpires, row.id],
-          (err2) => {
-            if (err2) {
-              logger.error('Kesalahan memperbarui data akun di tabel accounts:', err2.message);
-            } else {
-              logger.info(`Accounts updated untuk user ${userId}, ${type}:${username} di server ${serverId}`);
-            }
-          }
-        );
-      } else {
-        // ==== CREATE: belum ada, buat record baru ====
-        const createdAt = nowTs;
-        const expiresAt = addMs ? nowTs + addMs : null;
-
-        db.run(
-          'INSERT INTO accounts (user_id, username, type, server_id, created_at, expires_at) VALUES (?, ?, ?, ?, ?, ?)',
-          [userId, username, type, serverId, createdAt, expiresAt],
-          (err2) => {
-            if (err2) {
-              logger.error('Kesalahan menyimpan data akun ke tabel accounts:', err2.message);
-            } else {
-              logger.info(`Accounts inserted untuk user ${userId}, ${type}:${username} di server ${serverId}`);
-            }
-          }
-        );
+        return updateAccountDatesById(db, row.id, oldCreated, newExpires)
+          .then(() => {
+            logger.info(`Accounts updated untuk user ${userId}, ${type}:${username} di server ${serverId}`);
+          })
+          .catch((err2) => {
+            logger.error('Kesalahan memperbarui data akun di tabel accounts:', err2.message);
+          });
       }
-    }
-  );
+
+      const createdAt = nowTs;
+      const expiresAt = addMs ? nowTs + addMs : null;
+      return insertAccountRecord(db, userId, username, type, serverId, createdAt, expiresAt)
+        .then(() => {
+          logger.info(`Accounts inserted untuk user ${userId}, ${type}:${username} di server ${serverId}`);
+        })
+        .catch((err2) => {
+          logger.error('Kesalahan menyimpan data akun ke tabel accounts:', err2.message);
+        });
+    })
+    .catch((err) => {
+      logger.error('Kesalahan saat membaca tabel accounts:', err.message);
+    });
 }
 
 if (EXPIRE_DATE) {
