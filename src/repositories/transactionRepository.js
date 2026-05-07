@@ -1,4 +1,4 @@
-const { getOne, run } = require('./sqliteRepo');
+const { getOne, getAll, run } = require('./sqliteRepo');
 
 async function insertTransaction(db, payload) {
   const {
@@ -20,4 +20,31 @@ async function getTransactionByReferenceId(db, referenceId) {
   return getOne(db, 'SELECT id FROM transactions WHERE reference_id = ? LIMIT 1', [referenceId]);
 }
 
-module.exports = { insertTransaction, getTransactionByReferenceId };
+async function getAnyTransactionWithNullReference(db) {
+  return getOne(db, 'SELECT * FROM transactions WHERE reference_id IS NULL LIMIT 1', []);
+}
+
+async function listTransactionsWithNullReference(db) {
+  return getAll(db, 'SELECT id, user_id, type, timestamp FROM transactions WHERE reference_id IS NULL', []);
+}
+
+async function updateTransactionReferenceById(db, id, referenceId) {
+  return run(db, 'UPDATE transactions SET reference_id = ? WHERE id = ?', [referenceId, id]);
+}
+
+async function getRecentSaldoTransactionsByUserId(db, userId, limit = 20) {
+  return getAll(
+    db,
+    'SELECT amount, type, reference_id, timestamp FROM transactions WHERE user_id = ? AND amount IS NOT NULL ORDER BY timestamp DESC LIMIT ?',
+    [userId, Number(limit || 20)]
+  );
+}
+
+module.exports = {
+  insertTransaction,
+  getTransactionByReferenceId,
+  getAnyTransactionWithNullReference,
+  listTransactionsWithNullReference,
+  updateTransactionReferenceById,
+  getRecentSaldoTransactionsByUserId,
+};

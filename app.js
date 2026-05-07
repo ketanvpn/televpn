@@ -109,6 +109,10 @@ const { handleTextAddSaldoFlow } = require('./src/bot/handlers/textAddSaldoFlow'
 const {
   insertTransaction,
   getTransactionByReferenceId,
+  getAnyTransactionWithNullReference,
+  listTransactionsWithNullReference,
+  updateTransactionReferenceById,
+  getRecentSaldoTransactionsByUserId,
 } = require('./src/repositories/transactionRepository');
 const {
   getUserSaldoById,
@@ -2709,8 +2713,29 @@ db.run(`CREATE TABLE IF NOT EXISTS transactions (
         return;
       }
 
-      db.get("SELECT * FROM transactions WHERE reference_id IS NULL LIMIT 1", (err, row) => {
-        if (err && err.message.includes('no such column')) {
+      getAnyTransactionWithNullReference(db)
+        .then((row) => {
+          if (row) {
+            listTransactionsWithNullReference(db)
+              .then((rows) => {
+                rows.forEach((row) => {
+                  const referenceId = `account-${row.type}-${row.user_id}-${row.timestamp}`;
+                  updateTransactionReferenceById(db, row.id, referenceId)
+                    .then(() => {
+                      logger.info(`Berhasil mengupdate reference_id untuk transaksi ${row.id}`);
+                    })
+                    .catch((err) => {
+                      logger.error(`Kesalahan mengupdate reference_id untuk transaksi ${row.id}:`, err.message);
+                    });
+                });
+              })
+              .catch((err) => {
+                logger.error('Kesalahan mengambil transaksi tanpa reference_id:', err.message);
+              });
+          }
+        })
+        .catch((err) => {
+          if (err && err.message && err.message.includes('no such column')) {
           // Column doesn't exist, add it
           db.run("ALTER TABLE transactions ADD COLUMN reference_id TEXT", (err) => {
             if (err) {
@@ -2719,27 +2744,8 @@ db.run(`CREATE TABLE IF NOT EXISTS transactions (
               logger.info('Kolom reference_id berhasil ditambahkan ke tabel transactions');
             }
           });
-        } else if (row) {
-          // Update existing transactions with reference_id
-          db.all("SELECT id, user_id, type, timestamp FROM transactions WHERE reference_id IS NULL", [], (err, rows) => {
-            if (err) {
-              logger.error('Kesalahan mengambil transaksi tanpa reference_id:', err.message);
-              return;
-            }
-
-            rows.forEach(row => {
-              const referenceId = `account-${row.type}-${row.user_id}-${row.timestamp}`;
-              db.run("UPDATE transactions SET reference_id = ? WHERE id = ?", [referenceId, row.id], (err) => {
-                if (err) {
-                  logger.error(`Kesalahan mengupdate reference_id untuk transaksi ${row.id}:`, err.message);
-                } else {
-                  logger.info(`Berhasil mengupdate reference_id untuk transaksi ${row.id}`);
-                }
-              });
-            });
-          });
-        }
-      });
+          }
+        });
     });
     createUniqueIndexIfSafe('idx_transactions_reference_unique', 'transactions', 'reference_id', 'reference_id IS NOT NULL');
   }
@@ -11991,60 +11997,42 @@ processQrisTopupInvoice = async function processQrisTopupInvoice(ctx, baseAmount
 //////
   if (state.step === 'cek_saldo_userid') {
     const targetId = ctx.message.text.trim();
-    db.get('SELECT saldo FROM users WHERE user_id = ?', [targetId], (err, row) => {
-      if (err) {
-        logger.error('❌ Gagal mengambil saldo:', err.message);
-        return ctx.reply('❌ Terjadi kesalahan saat mengambil data saldo.');
-      }
-
-      if (!row) {
+    try {
+      const saldo = await getUserSaldoById(db, targetId);
+      if (saldo == null) {
         return ctx.reply(`⚠️ User dengan ID ${targetId} belum terdaftar di database.`);
       }
 
-      ctx.reply(`💰 Saldo user ${targetId}: Rp${row.saldo.toLocaleString()}`);
-      logger.info(`Admin ${ctx.from.id} mengecek saldo user ${targetId}: Rp${row.saldo}`);
+      await ctx.reply(`💰 Saldo user ${targetId}: Rp${Number(saldo).toLocaleString()}`);
+      logger.info(`Admin ${ctx.from.id} mengecek saldo user ${targetId}: Rp${saldo}`);
       delete userState[ctx.from.id];
-    });
+    } catch (err) {
+      logger.error('❌ Gagal mengambil saldo:', err.message);
+      return ctx.reply('❌ Terjadi kesalahan saat mengambil data saldo.');
+    }
   } else if (state.step === 'riwayat_saldo_userid') {
     const targetId = ctx.message.text.trim();
 
-    // 1) Ambil saldo sekarang
-    db.get('SELECT saldo FROM users WHERE user_id = ?', [targetId], (err, userRow) => {
-      if (err) {
-        logger.error('❌ Gagal mengambil saldo (riwayat):', err.message);
-        return ctx.reply('❌ Terjadi kesalahan saat mengambil data saldo.');
-      }
-
-      if (!userRow) {
+    try {
+      const currentSaldo = await getUserSaldoById(db, targetId);
+      if (currentSaldo == null) {
         return ctx.reply(`⚠️ User dengan ID ${targetId} belum terdaftar di database.`);
       }
 
-      const currentSaldo = Number(userRow.saldo || 0);
-
-    // 2) Ambil max 20 transaksi terakhir dari tabel transactions
-    //    HANYA yang punya amount (transaksi saldo beneran)
-    db.all(
-      'SELECT amount, type, reference_id, timestamp FROM transactions WHERE user_id = ? AND amount IS NOT NULL ORDER BY timestamp DESC LIMIT 20',
-      [targetId],
-      (err2, rows) => {
-          if (err2) {
-            logger.error('❌ Gagal mengambil riwayat transaksi saldo:', err2.message);
-            return ctx.reply('❌ Terjadi kesalahan saat mengambil riwayat saldo.');
-          }
-
-          if (!rows || rows.length === 0) {
-            delete userState[ctx.from.id];
-            return ctx.reply(
-              `ℹ️ Belum ada riwayat transaksi saldo untuk user ${targetId}.\n` +
-              `Biasanya riwayat muncul dari deposit otomatis (QRIS) dan log transaksi lain.`
-            );
-          }
+      const rows = await getRecentSaldoTransactionsByUserId(db, targetId, 20);
+      if (!rows || rows.length === 0) {
+        delete userState[ctx.from.id];
+        return ctx.reply(
+          `ℹ️ Belum ada riwayat transaksi saldo untuk user ${targetId}.\n` +
+          `Biasanya riwayat muncul dari deposit otomatis (QRIS) dan log transaksi lain.`
+        );
+      }
 
           const lines = [];
           lines.push('<b>📜 RIWAYAT SALDO USER</b>');
           lines.push('');
           lines.push(`User ID: <code>${targetId}</code>`);
-          lines.push(`Saldo sekarang: <b>Rp${currentSaldo.toLocaleString('id-ID')}</b>`);
+          lines.push(`Saldo sekarang: <b>Rp${Number(currentSaldo).toLocaleString('id-ID')}</b>`);
           lines.push('');
           lines.push('<code>Max 20 transaksi terakhir</code>');
 
@@ -12111,9 +12099,10 @@ if (lowerType.includes('deposit')) {
           ctx.reply(msg, { parse_mode: 'HTML' });
 
           delete userState[ctx.from.id];
-        }
-      );
-    });
+    } catch (err2) {
+      logger.error('❌ Gagal mengambil riwayat transaksi saldo:', err2.message);
+      return ctx.reply('❌ Terjadi kesalahan saat mengambil riwayat saldo.');
+    }
   }
 ///////
     const handledTextTrialOps = await handleTextTrialOps(ctx, {
