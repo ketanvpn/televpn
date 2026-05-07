@@ -1,3 +1,6 @@
+const { getServerPriceById } = require('../../repositories/serverRepository');
+const { getUserSaldoById } = require('../../repositories/userRepository');
+
 async function runAccountPurchasePrecheck(ctx, deps) {
   const {
     state,
@@ -12,12 +15,7 @@ async function runAccountPurchasePrecheck(ctx, deps) {
   const serverId = state.serverId;
   const action = state.action;
 
-  const server = await new Promise((resolve, reject) => {
-    db.get('SELECT harga FROM Server WHERE id = ?', [serverId], (err, row) => {
-      if (err) return reject(err);
-      resolve(row);
-    });
-  }).catch(async (err) => {
+  const server = await getServerPriceById(db, serverId).catch(async (err) => {
     logger.error('⚠️ Error fetching server price:', err.message);
     await ctx.reply('❌ *Terjadi kesalahan saat mengambil harga server.*', { parse_mode: 'Markdown' });
     return null;
@@ -35,23 +33,18 @@ async function runAccountPurchasePrecheck(ctx, deps) {
     if (isR) totalHarga = Math.max(1, Math.floor(totalHarga * RESELLER_DISCOUNT));
   }
 
-  const user = await new Promise((resolve, reject) => {
-    db.get('SELECT saldo FROM users WHERE user_id = ?', [ctx.from.id], (err, row) => {
-      if (err) return reject(err);
-      resolve(row);
-    });
-  }).catch(async (err) => {
+  const userSaldo = await getUserSaldoById(db, ctx.from.id).catch(async (err) => {
     logger.error('⚠️ Kesalahan saat mengambil saldo pengguna:', err.message);
     await ctx.reply('❌ *Terjadi kesalahan saat mengambil saldo pengguna.*', { parse_mode: 'Markdown' });
     return null;
   });
 
-  if (!user) {
+  if (userSaldo === null) {
     await ctx.reply('❌ *Pengguna tidak ditemukan.*', { parse_mode: 'Markdown' });
     return { ok: false };
   }
 
-  if (user.saldo < totalHarga) {
+  if (userSaldo < totalHarga) {
     await ctx.reply('❌ *Saldo Anda tidak mencukupi untuk melakukan transaksi ini.*', { parse_mode: 'Markdown' });
     return { ok: false };
   }

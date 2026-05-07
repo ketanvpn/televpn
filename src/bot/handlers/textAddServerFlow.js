@@ -1,3 +1,5 @@
+const { insertServer } = require('../../repositories/serverRepository');
+
 async function handleTextAddServerFlow(ctx, deps) {
   const { state, text, db, logger, userState } = deps;
 
@@ -94,24 +96,11 @@ async function handleTextAddServerFlow(ctx, deps) {
 
     const { domain, auth, nama_server, quota, iplimit, batas_create_akun } = state;
     try {
-      await new Promise((resolve) => {
-        db.run(
-          'INSERT INTO Server (domain, auth, nama_server, quota, iplimit, batas_create_akun, harga, total_create_akun) VALUES (?, ?, ?, ?, ?, ?, ?, ?)',
-          [domain, auth, nama_server, quota, iplimit, batas_create_akun, harga, 0],
-          (err) => {
-            if (err) {
-              logger.error('Error saat menambahkan server:', err.message);
-              ctx.reply('❌ *Terjadi kesalahan saat menambahkan server baru.*', { parse_mode: 'Markdown' });
-            } else {
-              ctx.reply(
-                `✅ *Server baru dengan domain ${domain} telah berhasil ditambahkan.*\n\n📤 *Detail Server:*\n- Domain: ${domain}\n- Auth: ${auth}\n- Nama Server: ${nama_server}\n- Quota: ${quota}\n- Limit IP: ${iplimit}\n- Batas Create Akun: ${batas_create_akun}\n- Harga: Rp ${harga}`,
-                { parse_mode: 'Markdown' }
-              );
-            }
-            resolve();
-          }
-        );
-      });
+      await insertServer(db, { domain, auth, nama_server, quota, iplimit, batas_create_akun, harga });
+      await ctx.reply(
+        `✅ *Server baru dengan domain ${domain} telah berhasil ditambahkan.*\n\n📤 *Detail Server:*\n- Domain: ${domain}\n- Auth: ${auth}\n- Nama Server: ${nama_server}\n- Quota: ${quota}\n- Limit IP: ${iplimit}\n- Batas Create Akun: ${batas_create_akun}\n- Harga: Rp ${harga}`,
+        { parse_mode: 'Markdown' }
+      );
     } catch (error) {
       logger.error('Error saat menambahkan server:', error);
       await ctx.reply('❌ *Terjadi kesalahan saat menambahkan server baru.*', { parse_mode: 'Markdown' });

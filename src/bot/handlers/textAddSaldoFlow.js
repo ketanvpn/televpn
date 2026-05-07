@@ -1,3 +1,5 @@
+const { addUserSaldo, getUserSaldoById } = require('../../repositories/userRepository');
+
 async function handleTextAddSaldoFlow(ctx, deps) {
   const {
     state,
@@ -27,15 +29,11 @@ async function handleTextAddSaldoFlow(ctx, deps) {
 
     const targetId = state.targetId;
 
-    db.run('UPDATE users SET saldo = saldo + ? WHERE user_id = ?', [amount, targetId], (err) => {
-      if (err) {
-        logger.error('❌ Gagal menambah saldo:', err.message);
-        ctx.reply('❌ Gagal menambah saldo ke user.');
-        return;
-      }
-
-      db.get('SELECT saldo FROM users WHERE user_id = ?', [targetId], (err2, updated) => {
+    addUserSaldo(db, targetId, amount).then(() => {
+      getUserSaldoById(db, targetId).then((saldoNow) => {
         const safeTargetId = Number(targetId);
+        const updated = (saldoNow === null) ? null : { saldo: saldoNow };
+        const err2 = null;
 
         if (err2 || !updated) {
           recordSaldoTransaction(safeTargetId, amount, 'manual_addsaldo', `addsaldo_by_${ctx.from.id}`);
@@ -120,9 +118,14 @@ async function handleTextAddSaldoFlow(ctx, deps) {
         } catch (e) {
           logger.error('❌ Error umum saat proses notif grup topup manual:', e.message);
         }
+      }).catch((err2) => {
+        logger.error('❌ Gagal membaca saldo terbaru user:', err2.message);
       });
 
       delete userState[ctx.from.id];
+    }).catch((err) => {
+      logger.error('❌ Gagal menambah saldo:', err.message);
+      ctx.reply('❌ Gagal menambah saldo ke user.');
     });
 
     return true;

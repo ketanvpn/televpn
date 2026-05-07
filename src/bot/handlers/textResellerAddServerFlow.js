@@ -1,3 +1,5 @@
+const { insertResellerServer } = require('../../repositories/serverRepository');
+
 async function handleTextResellerAddServerFlow(ctx, deps) {
   const { state, text, db, logger, userState } = deps;
 
@@ -46,28 +48,22 @@ async function handleTextResellerAddServerFlow(ctx, deps) {
   if (state && state.step === 'reseller_batas') {
     state.batas_create_akun = text;
 
-    db.run(
-      `INSERT INTO Server (domain, auth, harga, nama_server, quota, iplimit, batas_create_akun, total_create_akun, is_reseller_only)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 0, 1)`,
-      [
-        state.domain,
-        state.auth,
-        parseInt(state.harga, 10),
-        state.nama_server,
-        parseInt(state.quota, 10),
-        parseInt(state.iplimit, 10),
-        parseInt(state.batas_create_akun, 10),
-      ],
-      (err) => {
-        if (err) {
-          logger.error('❌ Gagal menambah server reseller:', err.message);
-          ctx.reply('❌ Gagal menambah server reseller.');
-        } else {
-          ctx.reply(`✅ Server reseller *${state.nama_server}* berhasil ditambahkan!`, { parse_mode: 'Markdown' });
-        }
-        delete userState[ctx.chat.id];
-      }
-    );
+    try {
+      await insertResellerServer(db, {
+        domain: state.domain,
+        auth: state.auth,
+        harga: parseInt(state.harga, 10),
+        nama_server: state.nama_server,
+        quota: parseInt(state.quota, 10),
+        iplimit: parseInt(state.iplimit, 10),
+        batas_create_akun: parseInt(state.batas_create_akun, 10),
+      });
+      await ctx.reply(`✅ Server reseller *${state.nama_server}* berhasil ditambahkan!`, { parse_mode: 'Markdown' });
+    } catch (err) {
+      logger.error('❌ Gagal menambah server reseller:', err.message);
+      await ctx.reply('❌ Gagal menambah server reseller.');
+    }
+    delete userState[ctx.chat.id];
     return true;
   }
 
