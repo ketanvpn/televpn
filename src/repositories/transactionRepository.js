@@ -1,4 +1,4 @@
-const { run } = require('./sqliteRepo');
+const { getOne, run } = require('./sqliteRepo');
 
 async function insertTransaction(db, payload) {
   const {
@@ -16,4 +16,8 @@ async function insertTransaction(db, payload) {
   );
 }
 
-module.exports = { insertTransaction };
+async function getTransactionByReferenceId(db, referenceId) {
+  return getOne(db, 'SELECT id FROM transactions WHERE reference_id = ? LIMIT 1', [referenceId]);
+}
+
+module.exports = { insertTransaction, getTransactionByReferenceId };

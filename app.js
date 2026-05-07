@@ -106,7 +106,10 @@ const { sendAccountPurchaseGroupNotif } = require('./src/bot/handlers/purchaseGr
 const { handleTextAddServerFlow } = require('./src/bot/handlers/textAddServerFlow');
 const { handleTextResellerAddServerFlow } = require('./src/bot/handlers/textResellerAddServerFlow');
 const { handleTextAddSaldoFlow } = require('./src/bot/handlers/textAddSaldoFlow');
-const { insertTransaction } = require('./src/repositories/transactionRepository');
+const {
+  insertTransaction,
+  getTransactionByReferenceId,
+} = require('./src/repositories/transactionRepository');
 const { getUserSaldoById, addUserSaldo } = require('./src/repositories/userRepository');
 const { run } = require('./src/repositories/sqliteRepo');
 const {
@@ -1294,7 +1297,13 @@ async function grantResellerActiveBonus({ userId, monthKey, activeDays, bonusAmo
       return { ok: false, reason: 'user_not_found' };
     }
 
-    await insertTransaction(db, uid, amount, 'reseller_active_bonus', refId, now);
+    await insertTransaction(db, {
+      userId: uid,
+      amount,
+      type: 'reseller_active_bonus',
+      referenceId: refId,
+      timestamp: now,
+    });
 
     await insertResellerBonusLog(db, {
       user_id: uid,
@@ -1678,47 +1687,36 @@ async function applyQrisTopupBonus(userId, invoiceId, bonusAmount) {
       db.run('BEGIN IMMEDIATE TRANSACTION', (err) => {
         if (err) return reject(err);
 
-        db.get(
-          'SELECT id FROM transactions WHERE reference_id = ? LIMIT 1',
-          [refId],
-          (err0, existing) => {
-            if (err0) {
-              return db.run('ROLLBACK', () => reject(err0));
-            }
+        getTransactionByReferenceId(db, refId)
+          .then((existing) => {
             if (existing) {
               return db.run('ROLLBACK', () => resolve({ applied: false, alreadyApplied: true }));
             }
 
-            db.run(
-              'UPDATE users SET saldo = saldo + ? WHERE user_id = ?',
-              [bonus, uid],
-              function (err1) {
-                if (err1) {
-                  return db.run('ROLLBACK', () => reject(err1));
-                }
-                if (!this.changes) {
+            addUserSaldo(db, uid, bonus)
+              .then((saldoRes) => {
+                if (!saldoRes.changes) {
                   return db.run('ROLLBACK', () => reject(new Error('User bonus QRIS tidak ditemukan')));
                 }
 
-                db.run(
-                  `INSERT INTO transactions (user_id, amount, type, reference_id, timestamp)
-                   VALUES (?, ?, ?, ?, ?)`,
-                  [uid, bonus, 'qris_topup_bonus', refId, now],
-                  (err2) => {
-                    if (err2) {
-                      return db.run('ROLLBACK', () => reject(err2));
-                    }
-
+                insertTransaction(db, {
+                  userId: uid,
+                  amount: bonus,
+                  type: 'qris_topup_bonus',
+                  referenceId: refId,
+                  timestamp: now,
+                })
+                  .then(() => {
                     db.run('COMMIT', (err3) => {
                       if (err3) return reject(err3);
                       resolve({ applied: true, alreadyApplied: false, refId });
                     });
-                  }
-                );
-              }
-            );
-          }
-        );
+                  })
+                  .catch((err2) => db.run('ROLLBACK', () => reject(err2)));
+              })
+              .catch((err1) => db.run('ROLLBACK', () => reject(err1)));
+          })
+          .catch((err0) => db.run('ROLLBACK', () => reject(err0)));
       });
     });
   });
