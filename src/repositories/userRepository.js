@@ -30,6 +30,18 @@ async function countUsers(db) {
   return row ? Number(row.count || 0) : 0;
 }
 
+async function ensureUserExists(db, userId) {
+  return run(db, 'INSERT OR IGNORE INTO users (user_id) VALUES (?)', [userId]);
+}
+
+async function deleteUserById(db, userId) {
+  return run(db, 'DELETE FROM users WHERE user_id = ?', [userId]);
+}
+
+async function listLatestUsersWithSaldo(db, limit = 10) {
+  return getAll(db, 'SELECT user_id, saldo FROM users ORDER BY id DESC LIMIT ?', [Number(limit)]);
+}
+
 module.exports = {
   getUserSaldoById,
   addUserSaldo,
@@ -37,4 +49,7 @@ module.exports = {
   deductUserSaldoIfEnough,
   listUsersPaged,
   countUsers,
+  ensureUserExists,
+  deleteUserById,
+  listLatestUsersWithSaldo,
 };

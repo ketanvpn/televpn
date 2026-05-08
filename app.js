@@ -137,6 +137,9 @@ const {
   deductUserSaldoIfEnough,
   listUsersPaged,
   countUsers,
+  ensureUserExists,
+  deleteUserById,
+  listLatestUsersWithSaldo,
 } = require('./src/repositories/userRepository');
 const { run } = require('./src/repositories/sqliteRepo');
 const {
@@ -2506,24 +2509,17 @@ bot.command(['start', 'menu'], async (ctx) => {
   }
 
   const userId = ctx.from.id;
-  db.get('SELECT * FROM users WHERE user_id = ?', [userId], (err, row) => {
-    if (err) {
-      logger.error('Kesalahan saat memeriksa user_id:', err.message);
-      return;
-    }
-
-    if (row) {
+  try {
+    const existingUser = await getUserById(db, userId);
+    await ensureUserExists(db, userId);
+    if (existingUser) {
       logger.info(`User ID ${userId} sudah ada di database`);
     } else {
-      db.run('INSERT INTO users (user_id) VALUES (?)', [userId], (err) => {
-        if (err) {
-          logger.error('Kesalahan saat menyimpan user_id:', err.message);
-        } else {
-          logger.info(`User ID ${userId} berhasil disimpan`);
-        }
-      });
+      logger.info(`User ID ${userId} berhasil disimpan`);
     }
-  });
+  } catch (error) {
+    logger.error('Kesalahan saat memeriksa/menyimpan user_id:', error.message || error);
+  }
 
   await sendMainMenu(ctx);
 });
@@ -3442,41 +3438,32 @@ bot.command('deluser', async (ctx) => {
     );
   }
 
-  // Cek apakah user ada di tabel users
-  db.get('SELECT * FROM users WHERE user_id = ?', [targetId], (err, row) => {
-    if (err) {
-      logger.error('❌ Kesalahan saat memeriksa user_id di /deluser:', err.message);
-      return ctx.reply('❌ Terjadi kesalahan saat memeriksa user.');
-    }
-
+  try {
+    const row = await getUserById(db, targetId);
     if (!row) {
       return ctx.reply(`ℹ️ User dengan ID ${targetId} tidak ditemukan di database.`);
     }
 
-    // Hapus dari tabel users
-    db.run('DELETE FROM users WHERE user_id = ?', [targetId], (err2) => {
-      if (err2) {
-        logger.error('❌ Gagal menghapus user di /deluser:', err2.message);
-        return ctx.reply('❌ Gagal menghapus user dari database.');
-      }
+    await deleteUserById(db, targetId);
+    logger.info(`✅ User ${targetId} dihapus dari tabel users oleh admin ${ctx.from.id}`);
 
-      logger.info(`✅ User ${targetId} dihapus dari tabel users oleh admin ${ctx.from.id}`);
-
-         // Setelah berhasil hapus dari users, hapus juga dari daftar reseller (cache + file)
-      try {
-        const removed = removeResellerIdFromCache(targetId);
-        if (removed) {
-          logger.info(`✅ User ${targetId} juga dihapus dari daftar reseller (cache + ressel.db)`);
-        }
-      } catch (e) {
-        logger.error('⚠️ Gagal mengupdate resellerCache di /deluser:', e.message || e);
+    try {
+      const removed = removeResellerIdFromCache(targetId);
+      if (removed) {
+        logger.info(`✅ User ${targetId} juga dihapus dari daftar reseller (cache + ressel.db)`);
       }
-      ctx.reply(
-        `✅ User dengan ID <code>${targetId}</code> berhasil dihapus dari database.`,
-        { parse_mode: 'HTML' }
-      );
-    });
-  });
+    } catch (e) {
+      logger.error('⚠️ Gagal mengupdate resellerCache di /deluser:', e.message || e);
+    }
+
+    ctx.reply(
+      `✅ User dengan ID <code>${targetId}</code> berhasil dihapus dari database.`,
+      { parse_mode: 'HTML' }
+    );
+  } catch (error) {
+    logger.error('❌ Gagal menghapus user di /deluser:', error.message || error);
+    return ctx.reply('❌ Gagal menghapus user dari database.');
+  }
 });
 
 // Command: /listuser
@@ -3489,54 +3476,39 @@ bot.command('listuser', async (ctx) => {
     return ctx.reply(NO_ACCESS_MESSAGE, { parse_mode: 'HTML' });
 }
 
-  // Hitung total user
-  db.get('SELECT COUNT(*) AS total FROM users', [], (err, row) => {
-    if (err) {
-      logger.error('Gagal menghitung total user:', err.message);
-      return ctx.reply('❌ Terjadi kesalahan saat mengambil data user.');
+  try {
+    const totalUser = await countUsers(db);
+    const rows = await listLatestUsersWithSaldo(db, 10);
+
+    let totalReseller = 0;
+    try {
+      const resList = listResellersSync();
+      if (Array.isArray(resList)) {
+        totalReseller = resList.length;
+      }
+    } catch (e) {
+      logger.error('Gagal mengambil daftar reseller:', e.message);
     }
 
-    const totalUser = row ? row.total : 0;
+    let msg = '<b>STATISTIK USER</b>\n\n';
+    msg += `Total user terdaftar : <b>${totalUser}</b>\n`;
+    msg += `Total reseller       : <b>${totalReseller}</b>\n\n`;
 
-    // Ambil 10 user terakhir (berdasarkan id)
-    db.all(
-      'SELECT user_id, saldo FROM users ORDER BY id DESC LIMIT 10',
-      [],
-      (err2, rows) => {
-        if (err2) {
-          logger.error('Gagal mengambil daftar user:', err2.message);
-          return ctx.reply('❌ Terjadi kesalahan saat mengambil daftar user.');
-        }
+    if (!rows || rows.length === 0) {
+      msg += 'Belum ada user di database.';
+    } else {
+      msg += '10 user terakhir di tabel:\n';
+      rows.forEach((u, i) => {
+        const saldo = Number(u.saldo || 0).toLocaleString('id-ID');
+        msg += `${i + 1}. <code>${u.user_id}</code> — Saldo: Rp${saldo}\n`;
+      });
+    }
 
-        // Hitung total reseller dari modul reseller
-        let totalReseller = 0;
-        try {
-          const resList = listResellersSync();
-          if (Array.isArray(resList)) {
-            totalReseller = resList.length;
-          }
-        } catch (e) {
-          logger.error('Gagal mengambil daftar reseller:', e.message);
-        }
-
-        let msg = '<b>STATISTIK USER</b>\n\n';
-        msg += `Total user terdaftar : <b>${totalUser}</b>\n`;
-        msg += `Total reseller       : <b>${totalReseller}</b>\n\n`;
-
-        if (!rows || rows.length === 0) {
-          msg += 'Belum ada user di database.';
-        } else {
-          msg += '10 user terakhir di tabel:\n';
-          rows.forEach((u, i) => {
-            const saldo = Number(u.saldo || 0).toLocaleString('id-ID');
-            msg += `${i + 1}. <code>${u.user_id}</code> — Saldo: Rp${saldo}\n`;
-          });
-        }
-
-        ctx.reply(msg, { parse_mode: 'HTML' });
-      }
-    );
-  });
+    ctx.reply(msg, { parse_mode: 'HTML' });
+  } catch (error) {
+    logger.error('Gagal mengambil data user:', error.message || error);
+    return ctx.reply('❌ Terjadi kesalahan saat mengambil data user.');
+  }
 });
 
 // Command: /setflag
