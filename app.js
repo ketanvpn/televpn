@@ -588,6 +588,9 @@ const qrisPendingDepositMonitorService = createQrisPendingDepositMonitorService(
   markDepositExpired,
   creditDeposit,
   qrisPaymentTimeoutMin: QRIS_PAYMENT_TIMEOUT_MIN,
+  pollIntervalMs: 10000,
+  depositExpireMs: 5 * 60 * 1000,
+  isPrimaryInstance: !process.env.NODE_APP_INSTANCE || process.env.NODE_APP_INSTANCE === '0',
 });
 const qrisTopupFlowService = createQrisTopupFlowService({
   getLatestPendingQrisPaymentByUserId,
@@ -2034,28 +2037,6 @@ createUniqueIndexIfSafe('idx_qris_payments_invoice_unique', 'qris_payments', 'in
 // Simpan deposit yang sedang menunggu pembayaran (di memory)
 global.pendingDeposits = global.pendingDeposits || {};
 
-// Anti dobel proses di PM2 cluster: hanya instance 0 yang polling
-const IS_PRIMARY_INSTANCE =
-  !process.env.NODE_APP_INSTANCE || process.env.NODE_APP_INSTANCE === '0';
-
-let lastPollTime = 0;
-const POLL_INTERVAL = 10000;          // 10 detik (mirip temanmu)
-const DEPOSIT_EXPIRE_MS = 5 * 60 * 1000; // 5 menit
-
-function parseKreditFromResponse(text) {
-  // format dari temanmu: ada "Kredit: 10.123"
-  const blocks = String(text).split('------------------------').filter(Boolean);
-  const kredits = [];
-
-  for (const b of blocks) {
-    const m = b.match(/Kredit\s*:\s*([\d.]+)/);
-    if (!m) continue;
-    const val = parseInt(m[1].replace(/\./g, ''), 10);
-    if (!Number.isNaN(val)) kredits.push(val);
-  }
-
-  return kredits;
-}
 
 async function markDepositExpired(uniqueCode, bot, db, logger) {
   await new Promise((resolve) => {
@@ -2207,55 +2188,6 @@ async function creditDeposit(uniqueCode, bot, db, logger, matchedTx = null) {
 
   delete global.pendingDeposits[uniqueCode];
   return true;
-}
-
-async function pollMutasi(bot, db, logger, axios) {
-  global.mutasiBlockedUntil = global.mutasiBlockedUntil || 0;
-  if (Date.now() < global.mutasiBlockedUntil) return;
-
-  const now = Date.now();
-  if (now - lastPollTime < POLL_INTERVAL) return;
-  lastPollTime = now;
-
-  const pendingList = Object.entries(global.pendingDeposits)
-    .filter(([_, d]) => d.status === 'pending');
-
-  if (pendingList.length === 0) return;
-
-  try {
-    const transactions = await fetchGopayTransactions();
-
-    for (const [uniqueCode, d] of pendingList) {
-      const expiresAt = d.expiresAt || (d.timestamp ? (d.timestamp + DEPOSIT_EXPIRE_MS) : 0);
-      if (expiresAt && now > expiresAt) {
-        await markDepositExpired(uniqueCode, bot, db, logger);
-        continue;
-      }
-
-      const matched = findMatchingSettlementTransaction(transactions, d.amount, {
-        createdAt: d.timestamp,
-        timeWindowMs: DEPOSIT_EXPIRE_MS,
-      });
-      if (matched) {
-        await creditDeposit(uniqueCode, bot, db, logger, matched);
-      }
-    }
-  } catch (e) {
-    const status = e?.response?.status;
-    const msg = e?.response?.data?.message || e?.message || e;
-    logger.error(`❌ Poll mutasi GoPay error (${status || 'no-status'}): ${msg}`);
-  }
-}
-
-
-function startAutoTopupMutasi(bot, db, logger, axios) {
-  if (!IS_PRIMARY_INSTANCE) {
-    logger.info('ℹ️ Auto-topup mutasi nonaktif di instance non-primary (PM2 cluster).');
-    return;
-  }
-
-  setInterval(() => pollMutasi(bot, db, logger, axios), 2000);
-  logger.info('✅ Auto-topup QRIS (mutasi) aktif.');
 }
 
 // ======================= END SECTION: PAYMENT - DATABASE TABLES =============
@@ -12812,7 +12744,7 @@ bot.launch()
   });
 
 // Jalankan scheduler di luar app.listen
-startAutoTopupMutasi(bot, db, logger, axios);
+qrisPendingDepositMonitorService.startAutoTopupMutasi(bot, db, logger);
 startQrisPaymentPolling(bot, db, logger);
 restartAutoBackupScheduler();
 startDailyReportScheduler();

@@ -4,7 +4,7 @@ Dokumen ini mencatat progres eksekusi Fase 4 secara teknis agar sinkron dengan p
 
 ## Status
 
-- Status: **In Progress (gelombang-1 selesai)**
+- Status: **Done (gelombang-1 + gelombang-2 selesai)**
 - Branch kerja saat ini: `phase-3-refactor-wip`
 - Update terakhir: 2026-05-08
 
@@ -64,5 +64,12 @@ Dokumen ini mencatat progres eksekusi Fase 4 secara teknis agar sinkron dengan p
 
 ## Lanjut Gelombang-2
 
-- Rapikan sisa fragmen legacy non-QRIS di `app.js` yang masih terkait admin utility/read-only.
-- Konsolidasi lebih lanjut agar `app.js` mendekati target bootstrap+wiring.
+- Gelombang-2 QRIS selesai:
+  - Polling mutasi `pending_deposits` dipindah ke `src/services/qrisPendingDepositMonitorService.js`.
+  - `startAutoTopupMutasi` sekarang dijalankan dari service (`qrisPendingDepositMonitorService.startAutoTopupMutasi(...)`) dan bukan lagi function legacy di `app.js`.
+  - Function legacy QRIS mutasi di `app.js` (`pollMutasi`, `startAutoTopupMutasi`, parser helper terkait) sudah dibersihkan.
+
+## Kesimpulan
+
+- Fase 4 dianggap selesai karena domain payment QRIS sudah terpisah ke service + handler modular, termasuk jalur monitor mutasi legacy dan polling startup.
+- Lanjutan pekerjaan fokus ke fase berikutnya (saldo/user management, reseller, admin tools, dan penipisan `app.js`).

@@ -358,7 +358,7 @@ Update terakhir: 2026-05-08 (branch `phase-3-refactor-wip`).
 
 - Fase 1-2: selesai.
 - Fase 3 (Repository Layer): selesai secara praktis untuk domain prioritas (`users`, `server`, `transactions`, `accounts`, `qris_payments`, `reseller_bonus_logs`) dengan beberapa query legacy/admin read-only masih ada di `app.js` untuk dibersihkan bertahap.
-- Fase 4 (Payment QRIS) gelombang-1: selesai (service extraction + handler modular).
+- Fase 4 (Payment QRIS): selesai (gelombang-1 service extraction + handler modular, gelombang-2 cleanup mutasi/polling legacy).
 
 Ringkasan hasil fase 4 gelombang-1:
 
@@ -376,10 +376,10 @@ Ringkasan hasil fase 4 gelombang-1:
 - Handler UI QRIS sudah dimodularisasi ke `src/bot/handlers/qrisTopup.js`.
 - Callback QRIS utama (`topupqris`, `topupqris_btn`, `qris_topup_confirm_*`, `qris_auto_topup`, `upload_qris`, `topup_manual`, `qris_status:*`) sudah tidak didaftarkan duplikat di `app.js`.
 
-Catatan lanjutan (gelombang-2):
+Catatan lanjutan setelah Fase 4:
 
-- Rapikan sisa legacy QRIS/non-QRIS di `app.js` yang masih read-only atau utilitas admin lama.
-- Lanjut fase berikutnya sesuai prioritas domain bisnis.
+- Fokus cleanup non-QRIS di `app.js` lanjut ke fase 6/7/8 (saldo-user, reseller, admin tools).
+- Pertahankan verifikasi batch (`node --check`) dan boundary transaksi finansial saat ekstraksi berikutnya.
 
 ## Prioritas Eksekusi Praktis
 
