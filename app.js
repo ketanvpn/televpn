@@ -160,6 +160,17 @@ const {
   getResellerBonusLogByUserAndMonth,
   insertResellerBonusLog,
 } = require('./src/repositories/resellerRepository');
+const {
+  getServerById,
+  getServerCreateQuotaById,
+  listAllServers,
+  listServerIdsAndNames,
+  deleteServerById,
+  deleteAllServers,
+  updateServerFieldById,
+  updateServerFieldByDomain,
+  normalizeNullTotalCreateAkun,
+} = require('./src/repositories/serverRepository');
 
 const trialFile = TRIAL_DB_PATH;
 const trialConfigFile = TRIAL_CONFIG_PATH;
@@ -2267,15 +2278,15 @@ db.run(`CREATE TABLE IF NOT EXISTS Server (
   }
 });
 
-db.run("UPDATE Server SET total_create_akun = 0 WHERE total_create_akun IS NULL", function(err) {
-  if (err) {
-    logger.error('Error fixing NULL total_create_akun:', err.message);
-  } else {
-    if (this.changes > 0) {
-      logger.info(`✅ Fixed ${this.changes} servers with NULL total_create_akun`);
+normalizeNullTotalCreateAkun(db)
+  .then((result) => {
+    if (result.changes > 0) {
+      logger.info(`✅ Fixed ${result.changes} servers with NULL total_create_akun`);
     }
-  }
-});
+  })
+  .catch((error) => {
+    logger.error('Error fixing NULL total_create_akun:', error.message);
+  });
 
 db.run(`CREATE TABLE IF NOT EXISTS users (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -4660,32 +4671,26 @@ bot.command('editharga', async (ctx) => {
 
   const hargaBaru = parseInt(hargaStr, 10);
 
-  db.run(
-    'UPDATE Server SET harga = ? WHERE domain = ?',
-    [hargaBaru, domain],
-    function (err) {
-      if (err) {
-        logger.error('⚠️ Kesalahan saat mengedit harga server:', err.message);
-        return ctx.reply(
-          '⚠️ Terjadi kesalahan saat mengedit harga server.',
-          { parse_mode: 'Markdown' }
-        );
-      }
-
-      // this.changes = berapa baris yang kena UPDATE
-      if (this.changes === 0) {
-        return ctx.reply(
-          '⚠️ Server dengan domain tersebut tidak ditemukan.',
-          { parse_mode: 'Markdown' }
-        );
-      }
-
-      ctx.reply(
-        `✅ Harga server \`${domain}\` berhasil diubah menjadi \`${hargaBaru}\`.`,
+  try {
+    const result = await updateServerFieldByDomain(db, domain, 'harga', hargaBaru);
+    if (result.changes === 0) {
+      return ctx.reply(
+        '⚠️ Server dengan domain tersebut tidak ditemukan.',
         { parse_mode: 'Markdown' }
       );
     }
-  );
+
+    ctx.reply(
+      `✅ Harga server \`${domain}\` berhasil diubah menjadi \`${hargaBaru}\`.`,
+      { parse_mode: 'Markdown' }
+    );
+  } catch (err) {
+    logger.error('⚠️ Kesalahan saat mengedit harga server:', err.message);
+    return ctx.reply(
+      '⚠️ Terjadi kesalahan saat mengedit harga server.',
+      { parse_mode: 'Markdown' }
+    );
+  }
 });
 
 
@@ -4713,43 +4718,32 @@ bot.command('editnama', async (ctx) => {
   const domain = args[1];
   const namaBaru = args.slice(2).join(' '); // nama bisa pakai spasi
 
-  db.run(
-    'UPDATE Server SET nama_server = ? WHERE domain = ?',
-    [namaBaru, domain],
-    function (err) {
-      if (err) {
-        logger.error('⚠️ Kesalahan saat mengedit nama server:', err.message);
-        return ctx.reply('⚠️ Kesalahan saat mengedit nama server.', {
-          parse_mode: 'Markdown',
-        });
-      }
-
-      if (this.changes === 0) {
-        return ctx.reply('⚠️ Server tidak ditemukan.', {
-          parse_mode: 'Markdown',
-        });
-      }
-
-      ctx.reply(
-        `✅ Nama server untuk \`${domain}\` berhasil diubah menjadi \`${namaBaru}\`.`,
-        { parse_mode: 'Markdown' }
-      );
+  try {
+    const result = await updateServerFieldByDomain(db, domain, 'nama_server', namaBaru);
+    if (result.changes === 0) {
+      return ctx.reply('⚠️ Server tidak ditemukan.', {
+        parse_mode: 'Markdown',
+      });
     }
-  );
+
+    ctx.reply(
+      `✅ Nama server untuk \`${domain}\` berhasil diubah menjadi \`${namaBaru}\`.`,
+      { parse_mode: 'Markdown' }
+    );
+  } catch (err) {
+    logger.error('⚠️ Kesalahan saat mengedit nama server:', err.message);
+    return ctx.reply('⚠️ Kesalahan saat mengedit nama server.', {
+      parse_mode: 'Markdown',
+    });
+  }
 });
 
 bot.action(/edit_domain_(\d+)/, async (ctx) => {
   const serverId = ctx.match[1];
   logger.info(`User ${ctx.from.id} memilih untuk mengedit domain server dengan ID: ${serverId}`);
 
-  // Ambil domain sekarang dari database
-  db.get('SELECT domain FROM Server WHERE id = ?', [serverId], async (err, row) => {
-    if (err) {
-      logger.error('Kesalahan saat mengambil data server untuk edit domain:', err.message);
-      await ctx.reply('⚠️ Terjadi kesalahan saat mengambil data server.');
-      return;
-    }
-
+  try {
+    const row = await getServerById(db, serverId);
     if (!row) {
       await ctx.reply('⚠️ Server tidak ditemukan.');
       return;
@@ -4770,7 +4764,10 @@ bot.action(/edit_domain_(\d+)/, async (ctx) => {
         '❌ Ketik *batal* untuk membatalkan.',
       { parse_mode: 'Markdown' }
     );
-  });
+  } catch (error) {
+    logger.error('Kesalahan saat mengambil data server untuk edit domain:', error.message || error);
+    await ctx.reply('⚠️ Terjadi kesalahan saat mengambil data server.');
+  }
 });
 
 
@@ -4794,29 +4791,24 @@ bot.command('editauth', async (ctx) => {
   const domain = args[1];
   const authBaru = args[2];
 
-  db.run(
-    'UPDATE Server SET auth = ? WHERE domain = ?',
-    [authBaru, domain],
-    function (err) {
-      if (err) {
-        logger.error('⚠️ Kesalahan saat mengedit auth server:', err.message);
-        return ctx.reply('⚠️ Kesalahan saat mengedit auth server.', {
-          parse_mode: 'Markdown',
-        });
-      }
-
-      if (this.changes === 0) {
-        return ctx.reply('⚠️ Server tidak ditemukan.', {
-          parse_mode: 'Markdown',
-        });
-      }
-
-      ctx.reply(
-        `✅ Auth server untuk \`${domain}\` berhasil diubah.`,
-        { parse_mode: 'Markdown' }
-      );
+  try {
+    const result = await updateServerFieldByDomain(db, domain, 'auth', authBaru);
+    if (result.changes === 0) {
+      return ctx.reply('⚠️ Server tidak ditemukan.', {
+        parse_mode: 'Markdown',
+      });
     }
-  );
+
+    ctx.reply(
+      `✅ Auth server untuk \`${domain}\` berhasil diubah.`,
+      { parse_mode: 'Markdown' }
+    );
+  } catch (err) {
+    logger.error('⚠️ Kesalahan saat mengedit auth server:', err.message);
+    return ctx.reply('⚠️ Kesalahan saat mengedit auth server.', {
+      parse_mode: 'Markdown',
+    });
+  }
 });
 
 bot.command('editlimitquota', async (ctx) => {
@@ -4847,32 +4839,27 @@ bot.command('editlimitquota', async (ctx) => {
 
   const quota = parseInt(quotaStr, 10);
 
-  db.run(
-    'UPDATE Server SET quota = ? WHERE domain = ?',
-    [quota, domain],
-    function (err) {
-      if (err) {
-        logger.error(
-          '⚠️ Kesalahan saat mengedit quota server:',
-          err.message
-        );
-        return ctx.reply('⚠️ Kesalahan saat mengedit quota server.', {
-          parse_mode: 'Markdown',
-        });
-      }
-
-      if (this.changes === 0) {
-        return ctx.reply('⚠️ Server tidak ditemukan.', {
-          parse_mode: 'Markdown',
-        });
-      }
-
-      ctx.reply(
-        `✅ Quota server \`${domain}\` berhasil diubah menjadi \`${quota}\`.`,
-        { parse_mode: 'Markdown' }
-      );
+  try {
+    const result = await updateServerFieldByDomain(db, domain, 'quota', quota);
+    if (result.changes === 0) {
+      return ctx.reply('⚠️ Server tidak ditemukan.', {
+        parse_mode: 'Markdown',
+      });
     }
-  );
+
+    ctx.reply(
+      `✅ Quota server \`${domain}\` berhasil diubah menjadi \`${quota}\`.`,
+      { parse_mode: 'Markdown' }
+    );
+  } catch (err) {
+    logger.error(
+      '⚠️ Kesalahan saat mengedit quota server:',
+      err.message
+    );
+    return ctx.reply('⚠️ Kesalahan saat mengedit quota server.', {
+      parse_mode: 'Markdown',
+    });
+  }
 });
 
 bot.command('editlimitip', async (ctx) => {
@@ -4903,32 +4890,27 @@ bot.command('editlimitip', async (ctx) => {
 
   const iplimit = parseInt(ipLimitStr, 10);
 
-  db.run(
-    'UPDATE Server SET iplimit = ? WHERE domain = ?',
-    [iplimit, domain],
-    function (err) {
-      if (err) {
-        logger.error(
-          '⚠️ Kesalahan saat mengedit iplimit server:',
-          err.message
-        );
-        return ctx.reply('⚠️ Kesalahan saat mengedit iplimit server.', {
-          parse_mode: 'Markdown',
-        });
-      }
-
-      if (this.changes === 0) {
-        return ctx.reply('⚠️ Server tidak ditemukan.', {
-          parse_mode: 'Markdown',
-        });
-      }
-
-      ctx.reply(
-        `✅ Limit IP server \`${domain}\` berhasil diubah menjadi \`${iplimit}\`.`,
-        { parse_mode: 'Markdown' }
-      );
+  try {
+    const result = await updateServerFieldByDomain(db, domain, 'iplimit', iplimit);
+    if (result.changes === 0) {
+      return ctx.reply('⚠️ Server tidak ditemukan.', {
+        parse_mode: 'Markdown',
+      });
     }
-  );
+
+    ctx.reply(
+      `✅ Limit IP server \`${domain}\` berhasil diubah menjadi \`${iplimit}\`.`,
+      { parse_mode: 'Markdown' }
+    );
+  } catch (err) {
+    logger.error(
+      '⚠️ Kesalahan saat mengedit iplimit server:',
+      err.message
+    );
+    return ctx.reply('⚠️ Kesalahan saat mengedit iplimit server.', {
+      parse_mode: 'Markdown',
+    });
+  }
 });
 
 bot.command('editlimitcreate', async (ctx) => {
@@ -4960,33 +4942,28 @@ bot.command('editlimitcreate', async (ctx) => {
 
   const batas = parseInt(batasStr, 10);
 
-  db.run(
-    'UPDATE Server SET batas_create_akun = ? WHERE domain = ?',
-    [batas, domain],
-    function (err) {
-      if (err) {
-        logger.error(
-          '⚠️ Kesalahan saat mengedit batas_create_akun server:',
-          err.message
-        );
-        return ctx.reply(
-          '⚠️ Kesalahan saat mengedit batas_create_akun server.',
-          { parse_mode: 'Markdown' }
-        );
-      }
-
-      if (this.changes === 0) {
-        return ctx.reply('⚠️ Server tidak ditemukan.', {
-          parse_mode: 'Markdown',
-        });
-      }
-
-      ctx.reply(
-        `✅ Batas create akun server \`${domain}\` berhasil diubah menjadi \`${batas}\`.`,
-        { parse_mode: 'Markdown' }
-      );
+  try {
+    const result = await updateServerFieldByDomain(db, domain, 'batas_create_akun', batas);
+    if (result.changes === 0) {
+      return ctx.reply('⚠️ Server tidak ditemukan.', {
+        parse_mode: 'Markdown',
+      });
     }
-  );
+
+    ctx.reply(
+      `✅ Batas create akun server \`${domain}\` berhasil diubah menjadi \`${batas}\`.`,
+      { parse_mode: 'Markdown' }
+    );
+  } catch (err) {
+    logger.error(
+      '⚠️ Kesalahan saat mengedit batas_create_akun server:',
+      err.message
+    );
+    return ctx.reply(
+      '⚠️ Kesalahan saat mengedit batas_create_akun server.',
+      { parse_mode: 'Markdown' }
+    );
+  }
 });
 
 bot.command('edittotalcreate', async (ctx) => {
@@ -5009,18 +4986,17 @@ bot.command('edittotalcreate', async (ctx) => {
       return ctx.reply('⚠️ `total_create_akun` harus berupa angka.', { parse_mode: 'Markdown' });
   }
 
-  db.run("UPDATE Server SET total_create_akun = ? WHERE domain = ?", [parseInt(total_create_akun), domain], function(err) {
-      if (err) {
-          logger.error('⚠️ Kesalahan saat mengedit total_create_akun server:', err.message);
-          return ctx.reply('⚠️ Kesalahan saat mengedit total_create_akun server.', { parse_mode: 'Markdown' });
-      }
+  try {
+    const result = await updateServerFieldByDomain(db, domain, 'total_create_akun', parseInt(total_create_akun, 10));
+    if (result.changes === 0) {
+      return ctx.reply('⚠️ Server tidak ditemukan.', { parse_mode: 'Markdown' });
+    }
 
-      if (this.changes === 0) {
-          return ctx.reply('⚠️ Server tidak ditemukan.', { parse_mode: 'Markdown' });
-      }
-
-      ctx.reply(`✅ Total create akun server \`${domain}\` berhasil diubah menjadi \`${total_create_akun}\`.`, { parse_mode: 'Markdown' });
-  });
+    ctx.reply(`✅ Total create akun server \`${domain}\` berhasil diubah menjadi \`${total_create_akun}\`.`, { parse_mode: 'Markdown' });
+  } catch (err) {
+    logger.error('⚠️ Kesalahan saat mengedit total_create_akun server:', err.message);
+    return ctx.reply('⚠️ Kesalahan saat mengedit total_create_akun server.', { parse_mode: 'Markdown' });
+  }
 });
 async function handleServiceAction(ctx, action) {
   let keyboard;
@@ -9586,12 +9562,8 @@ bot.action(/(create|renew)_username_(vmess|vless|trojan|shadowsocks|ssh)_(.+)/, 
   const serverId = ctx.match[3];
   userState[ctx.chat.id] = { step: `username_${action}_${type}`, serverId, type, action };
 
-  db.get('SELECT batas_create_akun, total_create_akun FROM Server WHERE id = ?', [serverId], async (err, server) => {
-    if (err) {
-      logger.error('⚠️ Error fetching server details:', err.message);
-      return ctx.reply('❌ *Terjadi kesalahan saat mengambil detail server.*', { parse_mode: 'Markdown' });
-    }
-
+  try {
+    const server = await getServerCreateQuotaById(db, serverId);
     if (!server) {
       return ctx.reply('❌ *Server tidak ditemukan.*', { parse_mode: 'Markdown' });
     }
@@ -9612,21 +9584,18 @@ await ctx.reply(
   '👤 <b>Masukkan username:</b>',
   { parse_mode: 'HTML' }
 );
-
-  });
+  } catch (error) {
+    logger.error('⚠️ Error fetching server details:', error.message || error);
+    return ctx.reply('❌ *Terjadi kesalahan saat mengambil detail server.*', { parse_mode: 'Markdown' });
+  }
 });
 
 // === ⚡️ KONFIRMASI TRIAL (semua tipe) ===
 bot.action(/(trial)_username_(vmess|vless|trojan|shadowsocks|ssh)_(\d+)/, async (ctx) => {
   const [action, type, serverId] = [ctx.match[1], ctx.match[2], ctx.match[3]];
 
-  // Ambil nama server dari database
-  db.get('SELECT * FROM Server WHERE id = ?', [serverId], async (err, server) => {
-    if (err) {
-      logger.error('❌ Gagal mengambil data server:', err.message);
-      return showErrorOnMenu(ctx, 'Terjadi kesalahan saat mengambil data server.');
-    }
-
+  try {
+    const server = await getServerById(db, serverId);
     if (!server) {
       return ctx.reply('⚠️ Server tidak ditemukan di database.');
     }
@@ -9684,8 +9653,10 @@ bot.action(/(trial)_username_(vmess|vless|trojan|shadowsocks|ssh)_(\d+)/, async 
       'Setelah itu bot akan langsung membuat akun trial dan menampilkan username & password yang dibuat otomatis.';
 
     await sendCleanMenu(ctx, info, { parse_mode: 'HTML' });
-
-  });
+  } catch (error) {
+    logger.error('❌ Gagal mengambil data server:', error.message || error);
+    return showErrorOnMenu(ctx, 'Terjadi kesalahan saat mengambil data server.');
+  }
 });
 
 
@@ -11385,15 +11356,7 @@ bot.action('detailserver', async (ctx) => {
     logger.info('📋 Proses detail server dimulai');
     await ctx.answerCbQuery();
 
-    const servers = await new Promise((resolve, reject) => {
-      db.all('SELECT * FROM Server', [], (err, servers) => {
-        if (err) {
-          logger.error('⚠️ Kesalahan saat mengambil detail server:', err.message);
-          return reject('⚠️ *PERHATIAN! Terjadi kesalahan saat mengambil detail server.*');
-        }
-        resolve(servers);
-      });
-    });
+    const servers = await listAllServers(db);
 
     if (servers.length === 0) {
       logger.info('⚠️ Tidak ada server yang tersedia');
@@ -11431,15 +11394,7 @@ bot.action('listserver', async (ctx) => {
     logger.info('📜 Proses daftar server dimulai');
     await ctx.answerCbQuery();
 
-    const servers = await new Promise((resolve, reject) => {
-      db.all('SELECT * FROM Server', [], (err, servers) => {
-        if (err) {
-          logger.error('⚠️ Kesalahan saat mengambil daftar server:', err.message);
-          return reject('⚠️ *PERHATIAN! Terjadi kesalahan saat mengambil daftar server.*');
-        }
-        resolve(servers);
-      });
-    });
+    const servers = await listAllServers(db);
 
     if (servers.length === 0) {
       logger.info('⚠️ Tidak ada server yang tersedia');
@@ -11480,15 +11435,7 @@ bot.action('resetdb', async (ctx) => {
 bot.action('confirm_resetdb', async (ctx) => {
   try {
     await ctx.answerCbQuery();
-    await new Promise((resolve, reject) => {
-      db.run('DELETE FROM Server', (err) => {
-        if (err) {
-          logger.error('❌ Error saat mereset tabel Server:', err.message);
-          return reject('❗️ *PERHATIAN! Terjadi KESALAHAN SERIUS saat mereset database. Harap segera hubungi administrator!*');
-        }
-        resolve();
-      });
-    });
+    await deleteAllServers(db);
     await ctx.reply('🚨 *PERHATIAN! Database telah DIRESET SEPENUHNYA. Semua server telah DIHAPUS TOTAL.*', { parse_mode: 'Markdown' });
   } catch (error) {
     logger.error('❌ Error saat mereset database:', error);
@@ -11510,28 +11457,22 @@ bot.action('deleteserver', async (ctx) => {
     logger.info('🗑️ Proses hapus server dimulai');
     await ctx.answerCbQuery();
 
-    db.all('SELECT * FROM Server', [], (err, servers) => {
-      if (err) {
-        logger.error('⚠️ Kesalahan saat mengambil daftar server:', err.message);
-        return ctx.reply('⚠️ *PERHATIAN! Terjadi kesalahan saat mengambil daftar server.*', { parse_mode: 'Markdown' });
-      }
+    const servers = await listAllServers(db);
+    if (servers.length === 0) {
+      logger.info('⚠️ Tidak ada server yang tersedia');
+      return ctx.reply('⚠️ *PERHATIAN! Tidak ada server yang tersedia saat ini.*', { parse_mode: 'Markdown' });
+    }
 
-      if (servers.length === 0) {
-        logger.info('⚠️ Tidak ada server yang tersedia');
-        return ctx.reply('⚠️ *PERHATIAN! Tidak ada server yang tersedia saat ini.*', { parse_mode: 'Markdown' });
-      }
+    const keyboard = servers.map(server => {
+      return [{ text: server.nama_server, callback_data: `confirm_delete_server_${server.id}` }];
+    });
+    keyboard.push([{ text: '🔙 Kembali ke Menu Utama', callback_data: 'kembali_ke_menu' }]);
 
-      const keyboard = servers.map(server => {
-        return [{ text: server.nama_server, callback_data: `confirm_delete_server_${server.id}` }];
-      });
-      keyboard.push([{ text: '🔙 Kembali ke Menu Utama', callback_data: 'kembali_ke_menu' }]);
-
-      ctx.reply('🗑️ *Pilih server yang ingin dihapus:*', {
-        reply_markup: {
-          inline_keyboard: keyboard
-        },
-        parse_mode: 'Markdown'
-      });
+    ctx.reply('🗑️ *Pilih server yang ingin dihapus:*', {
+      reply_markup: {
+        inline_keyboard: keyboard
+      },
+      parse_mode: 'Markdown'
     });
   } catch (error) {
     logger.error('❌ Kesalahan saat memulai proses hapus server:', error);
@@ -11722,15 +11663,7 @@ bot.action('editserver_limit_ip', async (ctx) => {
     logger.info('Edit server limit IP process started');
     await ctx.answerCbQuery();
 
-    const servers = await new Promise((resolve, reject) => {
-      db.all('SELECT id, nama_server FROM Server', [], (err, servers) => {
-        if (err) {
-          logger.error('❌ Kesalahan saat mengambil daftar server:', err.message);
-          return reject('⚠️ *PERHATIAN! Terjadi kesalahan saat mengambil daftar server.*');
-        }
-        resolve(servers);
-      });
-    });
+    const servers = await listServerIdsAndNames(db);
 
     if (servers.length === 0) {
       return ctx.reply('⚠️ *PERHATIAN! Tidak ada server yang tersedia untuk diedit.*', { parse_mode: 'Markdown' });
@@ -11760,15 +11693,7 @@ bot.action('editserver_batas_create_akun', async (ctx) => {
     logger.info('Edit server batas create akun process started');
     await ctx.answerCbQuery();
 
-    const servers = await new Promise((resolve, reject) => {
-      db.all('SELECT id, nama_server FROM Server', [], (err, servers) => {
-        if (err) {
-          logger.error('❌ Kesalahan saat mengambil daftar server:', err.message);
-          return reject('⚠️ *PERHATIAN! Terjadi kesalahan saat mengambil daftar server.*');
-        }
-        resolve(servers);
-      });
-    });
+    const servers = await listServerIdsAndNames(db);
 
     if (servers.length === 0) {
       return ctx.reply('⚠️ *PERHATIAN! Tidak ada server yang tersedia untuk diedit.*', { parse_mode: 'Markdown' });
@@ -11798,15 +11723,7 @@ bot.action('editserver_total_create_akun', async (ctx) => {
     logger.info('Edit server total create akun process started');
     await ctx.answerCbQuery();
 
-    const servers = await new Promise((resolve, reject) => {
-      db.all('SELECT id, nama_server FROM Server', [], (err, servers) => {
-        if (err) {
-          logger.error('❌ Kesalahan saat mengambil daftar server:', err.message);
-          return reject('⚠️ *PERHATIAN! Terjadi kesalahan saat mengambil daftar server.*');
-        }
-        resolve(servers);
-      });
-    });
+    const servers = await listServerIdsAndNames(db);
 
     if (servers.length === 0) {
       return ctx.reply('⚠️ *PERHATIAN! Tidak ada server yang tersedia untuk diedit.*', { parse_mode: 'Markdown' });
@@ -11836,15 +11753,7 @@ bot.action('editserver_quota', async (ctx) => {
     logger.info('Edit server quota process started');
     await ctx.answerCbQuery();
 
-    const servers = await new Promise((resolve, reject) => {
-      db.all('SELECT id, nama_server FROM Server', [], (err, servers) => {
-        if (err) {
-          logger.error('❌ Kesalahan saat mengambil daftar server:', err.message);
-          return reject('⚠️ *PERHATIAN! Terjadi kesalahan saat mengambil daftar server.*');
-        }
-        resolve(servers);
-      });
-    });
+    const servers = await listServerIdsAndNames(db);
 
     if (servers.length === 0) {
       return ctx.reply('⚠️ *PERHATIAN! Tidak ada server yang tersedia untuk diedit.*', { parse_mode: 'Markdown' });
@@ -11874,15 +11783,7 @@ bot.action('editserver_auth', async (ctx) => {
     logger.info('Edit server auth process started');
     await ctx.answerCbQuery();
 
-    const servers = await new Promise((resolve, reject) => {
-      db.all('SELECT id, nama_server FROM Server', [], (err, servers) => {
-        if (err) {
-          logger.error('❌ Kesalahan saat mengambil daftar server:', err.message);
-          return reject('⚠️ *PERHATIAN! Terjadi kesalahan saat mengambil daftar server.*');
-        }
-        resolve(servers);
-      });
-    });
+    const servers = await listServerIdsAndNames(db);
 
     if (servers.length === 0) {
       return ctx.reply('⚠️ *PERHATIAN! Tidak ada server yang tersedia untuk diedit.*', { parse_mode: 'Markdown' });
@@ -11913,15 +11814,7 @@ bot.action('editserver_harga', async (ctx) => {
     logger.info('Edit server harga process started');
     await ctx.answerCbQuery();
 
-    const servers = await new Promise((resolve, reject) => {
-      db.all('SELECT id, nama_server FROM Server', [], (err, servers) => {
-        if (err) {
-          logger.error('❌ Kesalahan saat mengambil daftar server:', err.message);
-          return reject('⚠️ *PERHATIAN! Terjadi kesalahan saat mengambil daftar server.*');
-        }
-        resolve(servers);
-      });
-    });
+    const servers = await listServerIdsAndNames(db);
 
     if (servers.length === 0) {
       return ctx.reply('⚠️ *PERHATIAN! Tidak ada server yang tersedia untuk diedit.*', { parse_mode: 'Markdown' });
@@ -11952,15 +11845,7 @@ bot.action('editserver_domain', async (ctx) => {
     logger.info('Edit server domain process started');
     await ctx.answerCbQuery();
 
-    const servers = await new Promise((resolve, reject) => {
-      db.all('SELECT id, nama_server FROM Server', [], (err, servers) => {
-        if (err) {
-          logger.error('❌ Kesalahan saat mengambil daftar server:', err.message);
-          return reject('⚠️ *PERHATIAN! Terjadi kesalahan saat mengambil daftar server.*');
-        }
-        resolve(servers);
-      });
-    });
+    const servers = await listServerIdsAndNames(db);
 
     if (servers.length === 0) {
       return ctx.reply('⚠️ *PERHATIAN! Tidak ada server yang tersedia untuk diedit.*', { parse_mode: 'Markdown' });
@@ -11991,15 +11876,7 @@ bot.action('nama_server_edit', async (ctx) => {
     logger.info('Edit server nama process started');
     await ctx.answerCbQuery();
 
-    const servers = await new Promise((resolve, reject) => {
-      db.all('SELECT id, nama_server FROM Server', [], (err, servers) => {
-        if (err) {
-          logger.error('❌ Kesalahan saat mengambil daftar server:', err.message);
-          return reject('⚠️ *PERHATIAN! Terjadi kesalahan saat mengambil daftar server.*');
-        }
-        resolve(servers);
-      });
-    });
+    const servers = await listServerIdsAndNames(db);
 
     if (servers.length === 0) {
       return ctx.reply('⚠️ *PERHATIAN! Tidak ada server yang tersedia untuk diedit.*', { parse_mode: 'Markdown' });
@@ -12183,14 +12060,8 @@ bot.action(/edit_domain_(\d+)/, async (ctx) => {
   const serverId = ctx.match[1];
   logger.info(`User ${ctx.from.id} memilih untuk mengedit domain server dengan ID: ${serverId}`);
 
-  // Ambil domain sekarang dari database
-  db.get('SELECT domain FROM Server WHERE id = ?', [serverId], async (err, row) => {
-    if (err) {
-      logger.error('Kesalahan saat mengambil data server untuk edit domain:', err.message);
-      await ctx.reply('⚠️ Terjadi kesalahan saat mengambil data server.');
-      return;
-    }
-
+  try {
+    const row = await getServerById(db, serverId);
     if (!row) {
       await ctx.reply('⚠️ Server tidak ditemukan.');
       return;
@@ -12212,21 +12083,18 @@ bot.action(/edit_domain_(\d+)/, async (ctx) => {
         '❌ Ketik *batal* untuk membatalkan.',
       { parse_mode: 'Markdown' }
     );
-  });
+  } catch (error) {
+    logger.error('Kesalahan saat mengambil data server untuk edit domain:', error.message || error);
+    await ctx.reply('⚠️ Terjadi kesalahan saat mengambil data server.');
+  }
 });
 
 bot.action(/edit_nama_(\d+)/, async (ctx) => {
   const serverId = ctx.match[1];
   logger.info(`User ${ctx.from.id} memilih untuk mengedit nama server dengan ID: ${serverId}`);
 
-  // Ambil nama server sekarang dari database
-  db.get('SELECT nama_server FROM Server WHERE id = ?', [serverId], async (err, row) => {
-    if (err) {
-      logger.error('Kesalahan saat mengambil data server:', err.message);
-      await ctx.reply('⚠️ Terjadi kesalahan saat mengambil data server.');
-      return;
-    }
-
+  try {
+    const row = await getServerById(db, serverId);
     if (!row) {
       await ctx.reply('⚠️ Server tidak ditemukan.');
       return;
@@ -12247,26 +12115,23 @@ bot.action(/edit_nama_(\d+)/, async (ctx) => {
       '❌ Ketik *batal* untuk membatalkan.',
       { parse_mode: 'Markdown' }
     );
-  });
+  } catch (error) {
+    logger.error('Kesalahan saat mengambil data server:', error.message || error);
+    await ctx.reply('⚠️ Terjadi kesalahan saat mengambil data server.');
+  }
 });
 
 
 bot.action(/confirm_delete_server_(\d+)/, async (ctx) => {
   try {
-    db.run('DELETE FROM Server WHERE id = ?', [ctx.match[1]], function(err) {
-      if (err) {
-        logger.error('Error deleting server:', err.message);
-        return ctx.reply('⚠️ *PERHATIAN! Terjadi kesalahan saat menghapus server.*', { parse_mode: 'Markdown' });
-      }
+    const result = await deleteServerById(db, ctx.match[1]);
+    if (result.changes === 0) {
+      logger.info('Server tidak ditemukan');
+      return ctx.reply('⚠️ *PERHATIAN! Server tidak ditemukan.*', { parse_mode: 'Markdown' });
+    }
 
-      if (this.changes === 0) {
-        logger.info('Server tidak ditemukan');
-        return ctx.reply('⚠️ *PERHATIAN! Server tidak ditemukan.*', { parse_mode: 'Markdown' });
-      }
-
-      logger.info(`Server dengan ID ${ctx.match[1]} berhasil dihapus`);
-      ctx.reply('✅ *Server berhasil dihapus.*', { parse_mode: 'Markdown' });
-    });
+    logger.info(`Server dengan ID ${ctx.match[1]} berhasil dihapus`);
+    ctx.reply('✅ *Server berhasil dihapus.*', { parse_mode: 'Markdown' });
   } catch (error) {
     logger.error('Kesalahan saat menghapus server:', error);
     await ctx.reply('❌ *GAGAL! Terjadi kesalahan saat memproses permintaan Anda. Silakan coba lagi nanti.*', { parse_mode: 'Markdown' });
@@ -12276,15 +12141,7 @@ bot.action(/confirm_delete_server_(\d+)/, async (ctx) => {
 bot.action(/server_detail_(\d+)/, async (ctx) => {
   const serverId = ctx.match[1];
   try {
-    const server = await new Promise((resolve, reject) => {
-      db.get('SELECT * FROM Server WHERE id = ?', [serverId], (err, server) => {
-        if (err) {
-          logger.error('⚠️ Kesalahan saat mengambil detail server:', err.message);
-          return reject('⚠️ *PERHATIAN! Terjadi kesalahan saat mengambil detail server.*');
-        }
-        resolve(server);
-      });
-    });
+    const server = await getServerById(db, serverId);
 
     if (!server) {
       logger.info('⚠️ Server tidak ditemukan');
@@ -12518,11 +12375,11 @@ async function handleAddSaldo(ctx, userStateData, data) {
 
 
 async function handleEditBatasCreateAkun(ctx, userStateData, data) {
-  await handleEditField(ctx, userStateData, data, 'batasCreateAkun', 'batas create akun', 'UPDATE Server SET batas_create_akun = ? WHERE id = ?');
+  await handleEditField(ctx, userStateData, data, 'batasCreateAkun', 'batas create akun', 'batas_create_akun');
 }
 
 async function handleEditTotalCreateAkun(ctx, userStateData, data) {
-  await handleEditField(ctx, userStateData, data, 'totalCreateAkun', 'total create akun', 'UPDATE Server SET total_create_akun = ? WHERE id = ?');
+  await handleEditField(ctx, userStateData, data, 'totalCreateAkun', 'total create akun', 'total_create_akun');
 }
 
 async function handleEditiplimit(ctx, userStateData, data) {
@@ -12532,21 +12389,21 @@ async function handleEditiplimit(ctx, userStateData, data) {
     data,
     'iplimit',
     'limit IP',
-    'UPDATE Server SET iplimit = ? WHERE id = ?'
+    'iplimit'
   );
 }
 
 
 async function handleEditQuota(ctx, userStateData, data) {
-  await handleEditField(ctx, userStateData, data, 'quota', 'quota', 'UPDATE Server SET quota = ? WHERE id = ?');
+  await handleEditField(ctx, userStateData, data, 'quota', 'quota', 'quota');
 }
 
 async function handleEditAuth(ctx, userStateData, data) {
-  await handleEditField(ctx, userStateData, data, 'auth', 'auth', 'UPDATE Server SET auth = ? WHERE id = ?');
+  await handleEditField(ctx, userStateData, data, 'auth', 'auth', 'auth');
 }
 
 async function handleEditDomain(ctx, userStateData, data) {
-  await handleEditField(ctx, userStateData, data, 'domain', 'domain', 'UPDATE Server SET domain = ? WHERE id = ?');
+  await handleEditField(ctx, userStateData, data, 'domain', 'domain', 'domain');
 }
 
 async function handleEditHarga(ctx, userStateData, data) {
@@ -12563,7 +12420,7 @@ async function handleEditHarga(ctx, userStateData, data) {
       return ctx.reply('❌ *Harga tidak valid. Masukkan angka yang valid.*', { parse_mode: 'Markdown' });
     }
     try {
-      await updateServerField(userStateData.serverId, hargaBaru, 'UPDATE Server SET harga = ? WHERE id = ?');
+      await updateServerField(userStateData.serverId, hargaBaru, 'harga');
       ctx.reply(`✅ *Harga server berhasil diupdate.*\n\n📄 *Detail Server:*\n- Harga Baru: *Rp ${hargaBaru}*`, { parse_mode: 'Markdown' });
     } catch (err) {
       ctx.reply('❌ *Terjadi kesalahan saat mengupdate harga server.*', { parse_mode: 'Markdown' });
@@ -12616,10 +12473,10 @@ function keyboard_nomor() {
   ];
 }
 async function handleEditNama(ctx, userStateData, data) {
-  await handleEditField(ctx, userStateData, data, 'name', 'nama server', 'UPDATE Server SET nama_server = ? WHERE id = ?');
+  await handleEditField(ctx, userStateData, data, 'name', 'nama server', 'nama_server');
 }
 
-async function handleEditField(ctx, userStateData, data, field, fieldName, query) {
+async function handleEditField(ctx, userStateData, data, field, fieldName, serverFieldKey) {
   let currentValue = userStateData[field] || '';
 
 if (data === 'cancel') {
@@ -12686,7 +12543,7 @@ if (data === 'cancel') {
       return await ctx.answerCbQuery(`⚠️ *${fieldName} tidak boleh kosong!*`, { show_alert: true });
     }
     try {
-      await updateServerField(userStateData.serverId, currentValue, query);
+      await updateServerField(userStateData.serverId, currentValue, serverFieldKey);
       ctx.reply(`✅ *${fieldName} server berhasil diupdate.*\n\n📄 *Detail Server:*\n- ${fieldName.charAt(0).toUpperCase() + fieldName.slice(1)}: *${currentValue}*`, { parse_mode: 'Markdown' });
     } catch (err) {
       ctx.reply(`❌ *Terjadi kesalahan saat mengupdate ${fieldName} server.*`, { parse_mode: 'Markdown' });
@@ -12763,17 +12620,13 @@ async function processAccountPayment(userId, amount, type, action, serverId, use
   });
 }
 
-async function updateServerField(serverId, value, query) {
-  return new Promise((resolve, reject) => {
-    db.run(query, [value, serverId], function (err) {
-      if (err) {
-        // Jangan pakai fieldName karena tidak didefinisikan
-        logger.error('⚠️ Kesalahan saat mengupdate data server:', err.message);
-        return reject(err);
-      }
-      resolve();
+async function updateServerField(serverId, value, serverFieldKey) {
+  return updateServerFieldById(db, serverId, serverFieldKey, value)
+    .then(() => {})
+    .catch((err) => {
+      logger.error('⚠️ Kesalahan saat mengupdate data server:', err.message);
+      throw err;
     });
-  });
 }
 
 
