@@ -135,6 +135,8 @@ const {
   addUserSaldo,
   getUserById,
   deductUserSaldoIfEnough,
+  listUsersPaged,
+  countUsers,
 } = require('./src/repositories/userRepository');
 const { run } = require('./src/repositories/sqliteRepo');
 const {
@@ -11496,25 +11498,8 @@ bot.action(/next_users_(\d+)/, async (ctx) => {
     logger.info(`Next users process started for page ${currentPage + 1}`);
     await ctx.answerCbQuery();
 
-    const users = await new Promise((resolve, reject) => {
-      db.all(`SELECT user_id FROM users LIMIT 20 OFFSET ${offset}`, [], (err, users) => {
-        if (err) {
-          logger.error('❌ Kesalahan saat mengambil daftar user:', err.message);
-          return reject('⚠️ *PERHATIAN! Terjadi kesalahan saat mengambil daftar user.*');
-        }
-        resolve(users);
-      });
-    });
-
-    const totalUsers = await new Promise((resolve, reject) => {
-      db.get('SELECT COUNT(*) as count FROM users', [], (err, row) => {
-        if (err) {
-          logger.error('❌ Kesalahan saat menghitung total user:', err.message);
-          return reject('⚠️ *PERHATIAN! Terjadi kesalahan saat menghitung total user.*');
-        }
-        resolve(row.count);
-      });
-    });
+    const users = await listUsersPaged(db, 20, offset);
+    const totalUsers = await countUsers(db);
 
     const keyboard = [];
     for (let i = 0; i < users.length; i += 2) {
@@ -11569,25 +11554,8 @@ bot.action(/prev_users_(\d+)/, async (ctx) => {
     logger.info(`Previous users process started for page ${currentPage}`);
     await ctx.answerCbQuery();
 
-    const users = await new Promise((resolve, reject) => {
-      db.all(`SELECT user_id FROM users LIMIT 20 OFFSET ${offset}`, [], (err, users) => {
-        if (err) {
-          logger.error('❌ Kesalahan saat mengambil daftar user:', err.message);
-          return reject('⚠️ *PERHATIAN! Terjadi kesalahan saat mengambil daftar user.*');
-        }
-        resolve(users);
-      });
-    });
-
-    const totalUsers = await new Promise((resolve, reject) => {
-      db.get('SELECT COUNT(*) as count FROM users', [], (err, row) => {
-        if (err) {
-          logger.error('❌ Kesalahan saat menghitung total user:', err.message);
-          return reject('⚠️ *PERHATIAN! Terjadi kesalahan saat menghitung total user.*');
-        }
-        resolve(row.count);
-      });
-    });
+    const users = await listUsersPaged(db, 20, offset);
+    const totalUsers = await countUsers(db);
 
     const keyboard = [];
     for (let i = 0; i < users.length; i += 2) {
