@@ -171,6 +171,8 @@ const {
   updateServerFieldById,
   updateServerFieldByDomain,
   normalizeNullTotalCreateAkun,
+  insertServer,
+  insertResellerServer,
 } = require('./src/repositories/serverRepository');
 
 const trialFile = TRIAL_DB_PATH;
@@ -4005,17 +4007,16 @@ bot.command('addserver_reseller', async (ctx) => {
 
     const [domain, auth, harga, nama_server, quota, iplimit, batas_create_akun] = args;
 
-    // ✅ TAMBAHKAN total_create_akun di VALUES
-    db.run(`INSERT INTO Server (domain, auth, harga, nama_server, quota, iplimit, batas_create_akun, is_reseller_only, total_create_akun) VALUES (?, ?, ?, ?, ?, ?, ?, 1, 0)`,
-      [domain, auth, harga, nama_server, quota, iplimit, batas_create_akun],
-      function (err) {
-        if (err) {
-          logger.error('❌ Gagal menambah server reseller:', err.message);
-          return ctx.reply('❌ *Gagal menambah server reseller.*', { parse_mode: 'Markdown' });
-        }
-        ctx.reply('✅ *Server khusus reseller berhasil ditambahkan!*', { parse_mode: 'Markdown' });
-      }
-    );
+    await insertResellerServer(db, {
+      domain,
+      auth,
+      harga: parseInt(harga, 10),
+      nama_server,
+      quota: parseInt(quota, 10),
+      iplimit: parseInt(iplimit, 10),
+      batas_create_akun: parseInt(batas_create_akun, 10),
+    });
+    ctx.reply('✅ *Server khusus reseller berhasil ditambahkan!*', { parse_mode: 'Markdown' });
   } catch (e) {
     logger.error('Error di /addserver_reseller:', e);
     ctx.reply('❌ *Terjadi kesalahan.*', { parse_mode: 'Markdown' });
@@ -4621,17 +4622,21 @@ bot.command('addserver', async (ctx) => {
       return ctx.reply('⚠️ `harga`, `quota`, `iplimit`, dan `batas_create_akun` harus berupa angka.', { parse_mode: 'Markdown' });
   }
 
-  // ✅ QUERY YANG BENAR
-  db.run("INSERT INTO Server (domain, auth, harga, nama_server, quota, iplimit, batas_create_akun, total_create_akun) VALUES (?, ?, ?, ?, ?, ?, ?, 0)",
-      [domain, auth, parseInt(harga), nama_server, parseInt(quota), parseInt(iplimit), parseInt(batas_create_akun)],
-      function(err) {
-          if (err) {
-              logger.error('⚠️ Kesalahan saat menambahkan server:', err.message);
-              return ctx.reply('⚠️ Kesalahan saat menambahkan server.', { parse_mode: 'Markdown' });
-          }
-          ctx.reply(`✅ Server \`${nama_server}\` berhasil ditambahkan.`, { parse_mode: 'Markdown' });
-      }
-  );
+  try {
+    await insertServer(db, {
+      domain,
+      auth,
+      harga: parseInt(harga, 10),
+      nama_server,
+      quota: parseInt(quota, 10),
+      iplimit: parseInt(iplimit, 10),
+      batas_create_akun: parseInt(batas_create_akun, 10),
+    });
+    ctx.reply(`✅ Server \`${nama_server}\` berhasil ditambahkan.`, { parse_mode: 'Markdown' });
+  } catch (err) {
+    logger.error('⚠️ Kesalahan saat menambahkan server:', err.message);
+    return ctx.reply('⚠️ Kesalahan saat menambahkan server.', { parse_mode: 'Markdown' });
+  }
 });
 
 bot.command('editharga', async (ctx) => {
@@ -10808,31 +10813,26 @@ processQrisTopupInvoice = async function processQrisTopupInvoice(ctx, baseAmount
 
   const serverId = state.serverId;
 
-  db.run(
-    'UPDATE Server SET nama_server = ? WHERE id = ?',
-    [newName, serverId],
-    function (err) {
-      if (err) {
-        logger.error('⚠️ Kesalahan saat mengedit nama server:', err.message);
-        ctx.reply('⚠️ Terjadi kesalahan saat mengupdate nama server.', {
-          parse_mode: 'Markdown',
-        });
-        return;
-      }
-
-      if (this.changes === 0) {
-        ctx.reply('⚠️ Server tidak ditemukan.', {
-          parse_mode: 'Markdown',
-        });
-        return;
-      }
-
-      ctx.reply(
-        `✅ Nama berhasil diubah:\n*${newName}*`,
-      { parse_mode: 'Markdown' }
-      );
+  try {
+    const result = await updateServerFieldById(db, serverId, 'nama_server', newName);
+    if (result.changes === 0) {
+      ctx.reply('⚠️ Server tidak ditemukan.', {
+        parse_mode: 'Markdown',
+      });
+      return;
     }
-  );
+
+    ctx.reply(
+      `✅ Nama berhasil diubah:\n*${newName}*`,
+    { parse_mode: 'Markdown' }
+    );
+  } catch (err) {
+    logger.error('⚠️ Kesalahan saat mengedit nama server:', err.message);
+    ctx.reply('⚠️ Terjadi kesalahan saat mengupdate nama server.', {
+      parse_mode: 'Markdown',
+    });
+    return;
+  }
  
   delete userState[ctx.chat.id];
   return; // penting: jangan lanjut ke logika state lain
@@ -10878,33 +10878,28 @@ processQrisTopupInvoice = async function processQrisTopupInvoice(ctx, baseAmount
     const serverId = state.serverId;
     const oldDomain = state.oldDomain || '-';
 
-    db.run(
-      'UPDATE Server SET domain = ? WHERE id = ?',
-      [newDomain, serverId],
-      function (err) {
-        if (err) {
-          logger.error('⚠️ Kesalahan saat mengedit domain server:', err.message);
-          ctx.reply('⚠️ Terjadi kesalahan saat mengupdate domain server.', {
-            parse_mode: 'Markdown',
-          });
-          return;
-        }
-
-        if (this.changes === 0) {
-          ctx.reply('⚠️ Server tidak ditemukan.', {
-            parse_mode: 'Markdown',
-          });
-          return;
-        }
-
-        ctx.reply(
-          `✅ Domain server berhasil diubah:\n` +
-            `• Sebelumnya: \`${oldDomain}\`\n` +
-            `• Menjadi   : \`${newDomain}\``,
-          { parse_mode: 'Markdown' }
-        );
+    try {
+      const result = await updateServerFieldById(db, serverId, 'domain', newDomain);
+      if (result.changes === 0) {
+        ctx.reply('⚠️ Server tidak ditemukan.', {
+          parse_mode: 'Markdown',
+        });
+        return;
       }
-    );
+
+      ctx.reply(
+        `✅ Domain server berhasil diubah:\n` +
+          `• Sebelumnya: \`${oldDomain}\`\n` +
+          `• Menjadi   : \`${newDomain}\``,
+        { parse_mode: 'Markdown' }
+      );
+    } catch (err) {
+      logger.error('⚠️ Kesalahan saat mengedit domain server:', err.message);
+      ctx.reply('⚠️ Terjadi kesalahan saat mengupdate domain server.', {
+        parse_mode: 'Markdown',
+      });
+      return;
+    }
 
     // Hapus state setelah berhasil / diproses
     delete userState[ctx.chat.id];
@@ -10942,45 +10937,39 @@ processQrisTopupInvoice = async function processQrisTopupInvoice(ctx, baseAmount
     const domain = state.domain || '-';
     const nama = state.nama || '-';
 
-    db.run(
-      'UPDATE Server SET auth = ? WHERE id = ?',
-      [newAuth, serverId],
-      function (err) {
-        if (err) {
-          logger.error('⚠️ Kesalahan saat mengedit auth server:', err.message);
-          ctx.reply('⚠️ Terjadi kesalahan saat mengupdate auth server.', {
-            parse_mode: 'Markdown',
-          });
-          return;
-        }
-
-        if (this.changes === 0) {
-          ctx.reply('⚠️ Server tidak ditemukan.', {
-            parse_mode: 'Markdown',
-          });
-          return;
-        }
-
-        // Biar nggak tampil full AUTH di chat, kita mask
-        let maskedOld = oldAuth;
-        if (maskedOld.length > 8) {
-          maskedOld = maskedOld.slice(0, 4) + '...' + maskedOld.slice(-4);
-        }
-        let maskedNew = newAuth;
-        if (maskedNew.length > 8) {
-          maskedNew = maskedNew.slice(0, 4) + '...' + maskedNew.slice(-4);
-        }
-
-        ctx.reply(
-          '✅ Auth server berhasil diubah:\n' +
-            `• Server : \`${nama}\`\n` +
-            `• Domain : \`${domain}\`\n` +
-            `• Sebelumnya: \`${maskedOld}\`\n` +
-            `• Menjadi   : \`${maskedNew}\``,
-          { parse_mode: 'Markdown' }
-        );
+    try {
+      const result = await updateServerFieldById(db, serverId, 'auth', newAuth);
+      if (result.changes === 0) {
+        ctx.reply('⚠️ Server tidak ditemukan.', {
+          parse_mode: 'Markdown',
+        });
+        return;
       }
-    );
+
+      let maskedOld = oldAuth;
+      if (maskedOld.length > 8) {
+        maskedOld = maskedOld.slice(0, 4) + '...' + maskedOld.slice(-4);
+      }
+      let maskedNew = newAuth;
+      if (maskedNew.length > 8) {
+        maskedNew = maskedNew.slice(0, 4) + '...' + maskedNew.slice(-4);
+      }
+
+      ctx.reply(
+        '✅ Auth server berhasil diubah:\n' +
+          `• Server : \`${nama}\`\n` +
+          `• Domain : \`${domain}\`\n` +
+          `• Sebelumnya: \`${maskedOld}\`\n` +
+          `• Menjadi   : \`${maskedNew}\``,
+        { parse_mode: 'Markdown' }
+      );
+    } catch (err) {
+      logger.error('⚠️ Kesalahan saat mengedit auth server:', err.message);
+      ctx.reply('⚠️ Terjadi kesalahan saat mengupdate auth server.', {
+        parse_mode: 'Markdown',
+      });
+      return;
+    }
 
     // Hapus state setelah diproses
     delete userState[ctx.chat.id];
