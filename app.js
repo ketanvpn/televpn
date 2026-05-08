@@ -140,6 +140,8 @@ const {
   ensureUserExists,
   deleteUserById,
   listLatestUsersWithSaldo,
+  updateUserFlagById,
+  setUserSaldoById,
 } = require('./src/repositories/userRepository');
 const { run } = require('./src/repositories/sqliteRepo');
 const {
@@ -3045,21 +3047,13 @@ bot.command('addsaldo', async (ctx) => {
     );
   }
 
-  // Ambil saldo lama user
-  db.get(
-    'SELECT saldo FROM users WHERE user_id = ?',
-    [targetId],
-    (err, row) => {
-      if (err) {
-        logger.error('Error ambil data user:', err.message);
-        return ctx.reply('❌ Gagal membaca data user. Coba lagi nanti.');
-      }
-
-      if (!row) {
+  try {
+      const oldSaldoRaw = await getUserSaldoById(db, targetId);
+      if (oldSaldoRaw == null) {
         return ctx.reply(`❌ User dengan ID ${targetId} tidak ditemukan di database.`);
       }
 
-      const oldSaldo = Number(row.saldo || 0);
+      const oldSaldo = Number(oldSaldoRaw || 0);
 
       // 🎁 BONUS: pakai tier dari .vars.json jika ada
       let bonusEnabled = true;
@@ -3120,75 +3114,70 @@ bot.command('addsaldo', async (ctx) => {
       const totalCredit = amount + bonus;
       const newSaldo = oldSaldo + totalCredit;
 
-      // Update saldo user
-      db.run(
-        'UPDATE users SET saldo = ? WHERE user_id = ?',
-        [newSaldo, targetId],
-        async (err2) => {
-          if (err2) {
-            logger.error('Error update saldo:', err2.message);
-            return ctx.reply('❌ Gagal menambahkan saldo. Coba lagi nanti.');
-          }
+      const updateRes = await setUserSaldoById(db, targetId, newSaldo);
+      if (!updateRes.changes) {
+        return ctx.reply('❌ Gagal menambahkan saldo. Coba lagi nanti.');
+      }
 
-          // 🧾 CATAT TRANSAKSI SALDO
-          try {
-            recordSaldoTransaction(
-              targetId,
-              totalCredit,
-              'manual_addsaldo',
-              `addsaldo_by_${ctx.from.id}`
-            );
-          } catch (e) {
-            logger.error('Gagal mencatat transaksi tambah saldo manual:', e.message);
-          }
+      // 🧾 CATAT TRANSAKSI SALDO
+      try {
+        recordSaldoTransaction(
+          targetId,
+          totalCredit,
+          'manual_addsaldo',
+          `addsaldo_by_${ctx.from.id}`
+        );
+      } catch (e) {
+        logger.error('Gagal mencatat transaksi tambah saldo manual:', e.message);
+      }
 
-          // Notif ke admin
-          let msgAdmin =
-            `✅ Saldo user ID <code>${targetId}</code> berhasil ditambah.\n\n` +
-            `💵 Nominal bayar : <b>Rp${amount.toLocaleString('id-ID')}</b>\n`;
+      // Notif ke admin
+      let msgAdmin =
+        `✅ Saldo user ID <code>${targetId}</code> berhasil ditambah.\n\n` +
+        `💵 Nominal bayar : <b>Rp${amount.toLocaleString('id-ID')}</b>\n`;
 
-          if (bonus > 0) {
-            msgAdmin +=
-              `🎁 Bonus         : <b>Rp${bonus.toLocaleString('id-ID')} (${bonusPercent}%)</b>\n` +
-              `💳 Saldo masuk   : <b>Rp${totalCredit.toLocaleString('id-ID')}</b>\n`;
-          } else {
-            msgAdmin +=
-              `💳 Saldo masuk   : <b>Rp${totalCredit.toLocaleString('id-ID')}</b>\n`;
-          }
+      if (bonus > 0) {
+        msgAdmin +=
+          `🎁 Bonus         : <b>Rp${bonus.toLocaleString('id-ID')} (${bonusPercent}%)</b>\n` +
+          `💳 Saldo masuk   : <b>Rp${totalCredit.toLocaleString('id-ID')}</b>\n`;
+      } else {
+        msgAdmin +=
+          `💳 Saldo masuk   : <b>Rp${totalCredit.toLocaleString('id-ID')}</b>\n`;
+      }
 
-          msgAdmin +=
-            `\n💼 Saldo sekarang: <b>Rp${newSaldo.toLocaleString('id-ID')}</b>`;
+      msgAdmin +=
+        `\n💼 Saldo sekarang: <b>Rp${newSaldo.toLocaleString('id-ID')}</b>`;
 
-          await ctx.reply(msgAdmin, { parse_mode: 'HTML' });
+      await ctx.reply(msgAdmin, { parse_mode: 'HTML' });
 
-          // Notif ke user
-          try {
-            let msgUser =
-              '💰 Saldo kamu telah <b>ditambahkan</b>.\n\n' +
-              `💵 Topup : <b>Rp ${amount.toLocaleString('id-ID')}</b>\n`;
+      // Notif ke user
+      try {
+        let msgUser =
+          '💰 Saldo kamu telah <b>ditambahkan</b>.\n\n' +
+          `💵 Topup : <b>Rp ${amount.toLocaleString('id-ID')}</b>\n`;
 
-            if (bonus > 0) {
-              msgUser +=
-                `🎁 Bonus : <b>Rp ${bonus.toLocaleString('id-ID')} (${bonusPercent}%)</b>\n` +
-                `💳 Masuk : <b>Rp ${totalCredit.toLocaleString('id-ID')}</b>\n`;
-            } else {
-              msgUser +=
-                `💳 Masuk : <b>Rp ${totalCredit.toLocaleString('id-ID')}</b>\n`;
-            }
+        if (bonus > 0) {
+          msgUser +=
+            `🎁 Bonus : <b>Rp ${bonus.toLocaleString('id-ID')} (${bonusPercent}%)</b>\n` +
+            `💳 Masuk : <b>Rp ${totalCredit.toLocaleString('id-ID')}</b>\n`;
+        } else {
+          msgUser +=
+            `💳 Masuk : <b>Rp ${totalCredit.toLocaleString('id-ID')}</b>\n`;
+        }
 
-            msgUser +=
-              `\n💼 Saldo sekarang: <b>Rp ${newSaldo.toLocaleString('id-ID')}</b>`;
+        msgUser +=
+          `\n💼 Saldo sekarang: <b>Rp ${newSaldo.toLocaleString('id-ID')}</b>`;
 
-            await bot.telegram.sendMessage(targetId, msgUser, {
-              parse_mode: 'HTML'
-            });
-          } catch (e) {
-            logger.error('Gagal kirim notif ke user:', e.message);
-          }
+        await bot.telegram.sendMessage(targetId, msgUser, {
+          parse_mode: 'HTML'
+        });
+      } catch (e) {
+        logger.error('Gagal kirim notif ke user:', e.message);
+      }
 
-          // Notif ke grup (jika diaktifkan)
-          if (typeof NOTIF_TOPUP_GROUP !== 'undefined' && NOTIF_TOPUP_GROUP && GROUP_ID) {
-            try {
+      // Notif ke grup (jika diaktifkan)
+      if (typeof NOTIF_TOPUP_GROUP !== 'undefined' && NOTIF_TOPUP_GROUP && GROUP_ID) {
+        try {
               let targetInfo;
               try {
                 targetInfo = await bot.telegram.getChat(targetId);
@@ -3241,14 +3230,14 @@ bot.command('addsaldo', async (ctx) => {
               await bot.telegram.sendMessage(GROUP_ID, notifTopup, {
                 parse_mode: 'HTML'
               });
-            } catch (e) {
-              logger.error('Gagal kirim notif topup manual ke grup:', e.message);
-            }
-          }
+        } catch (e) {
+          logger.error('Gagal kirim notif topup manual ke grup:', e.message);
         }
-      );
-    }
-  );
+      }
+  } catch (error) {
+    logger.error('Error ambil/update data user:', error.message || error);
+    return ctx.reply('❌ Gagal menambahkan saldo. Coba lagi nanti.');
+  }
 });
 
 
@@ -3288,121 +3277,100 @@ bot.command('minsaldo', async (ctx) => {
     );
   }
 
-  // Ambil saldo lama user
-  db.get(
-    'SELECT saldo FROM users WHERE user_id = ?',
-    [targetId],
-    (err, row) => {
-      if (err) {
-        console.error('Error ambil data user:', err.message);
-        return ctx.reply('❌ Gagal membaca data user. Coba lagi nanti.');
-      }
-
-      if (!row) {
-        return ctx.reply(`⚠️ User dengan ID ${targetId} tidak ditemukan di database.`);
-      }
-
-      const oldSaldo = Number(row.saldo || 0);
-
-      // Cek biar saldo tidak minus
-      if (oldSaldo < amount) {
-        return ctx.reply(
-          `⚠️ Saldo user tidak cukup.\n` +
-          `Saldo sekarang: Rp${oldSaldo.toLocaleString()}\n` +
-          `Jumlah pengurangan: Rp${amount.toLocaleString()}`
-        );
-      }
-
-      const newSaldo = oldSaldo - amount;
-
-      // Update saldo user
-      db.run(
-        'UPDATE users SET saldo = ? WHERE user_id = ?',
-        [newSaldo, targetId],
-        async (err2) => {
-          if (err2) {
-            console.error('Error update saldo:', err2.message);
-            return ctx.reply('❌ Gagal mengurangi saldo. Coba lagi nanti.');
-          }
-       // 🧾 CATAT TRANSAKSI SALDO
-          recordSaldoTransaction(
-            targetId,
-            amount,
-            'manual_minsaldo',
-            `minsaldo_by_${ctx.from.id}`
-          );
-
-          // Notif ke admin (chat ini)
-          await ctx.reply(
-            `✅ Saldo user ID <code>${targetId}</code> berhasil dikurangi Rp${amount.toLocaleString()}.\n` +
-            `💰 Saldo sekarang: <b>Rp${newSaldo.toLocaleString()}</b>`,
-            { parse_mode: 'HTML' }
-          );
-
-          // Notif ke user yang bersangkutan (kalau bisa di-chat)
-try {
-  await bot.telegram.sendMessage(
-    targetId,
-    '💸 Saldo kamu telah <b>dikurangi</b> sebesar <b>Rp ' + amount.toLocaleString() + '</b>.\n' +
-    '💳 Saldo sekarang: <b>Rp ' + newSaldo.toLocaleString() + '</b>.',
-    { parse_mode: 'HTML' }
-  );
-} catch (e) {
-  console.error('Gagal kirim notif ke user saat pengurangan saldo:', e.message);
-}
-
-
-          // (OPSIONAL) Notif ke grup, mirip topup manual
- if (NOTIF_TOPUP_GROUP) {
   try {
-    // Ambil info user untuk ditampilkan
-    let targetInfo;
-    try {
-      targetInfo = await bot.telegram.getChat(targetId);
-    } catch (e) {
-      targetInfo = {};
+    const oldSaldoRaw = await getUserSaldoById(db, targetId);
+    if (oldSaldoRaw == null) {
+      return ctx.reply(`⚠️ User dengan ID ${targetId} tidak ditemukan di database.`);
     }
 
-    let userLabel;
-    if (targetInfo.username) {
-      userLabel = targetInfo.username;
-    } else if (targetInfo.first_name) {
-      userLabel = targetInfo.first_name;
-    } else {
-      userLabel = String(targetId);
-    }
-
-    const waktu = new Date().toLocaleString('id-ID', {
-      timeZone: TIME_ZONE,
-      year: 'numeric',
-      month: '2-digit',
-      day: '2-digit',
-      hour: '2-digit',
-      minute: '2-digit',
-    });
-
-    const notifPotong =
-      '<blockquote>\n' +
-      '━━ PENGURANGAN SALDO ━━\n' +
-      '<code>\n' + // <-- MULAI BLOK MONOSPACE
-      `👤 User   : ${userLabel}\n` +
-      `💸 Jumlah : Rp ${amount.toLocaleString()}\n` +
-      `📅 Tanggal: ${waktu}\n` +
-      '</code>\n' + // <-- AKHIR BLOK MONOSPACE
-      '━━━━━━━━━━━━━━━━━━━━\n' +
-      '</blockquote>';
-
-    await bot.telegram.sendMessage(GROUP_ID, notifPotong, {
-      parse_mode: 'HTML',
-    });
-            } catch (e) {
-              console.error('Gagal kirim notif pengurangan saldo ke grup:', e.message);
-            }
-          }
-        }
+    const oldSaldo = Number(oldSaldoRaw || 0);
+    if (oldSaldo < amount) {
+      return ctx.reply(
+        `⚠️ Saldo user tidak cukup.\n` +
+        `Saldo sekarang: Rp${oldSaldo.toLocaleString()}\n` +
+        `Jumlah pengurangan: Rp${amount.toLocaleString()}`
       );
     }
-  );
+
+    const newSaldo = oldSaldo - amount;
+    const updateRes = await setUserSaldoById(db, targetId, newSaldo);
+    if (!updateRes.changes) {
+      return ctx.reply('❌ Gagal mengurangi saldo. Coba lagi nanti.');
+    }
+
+    recordSaldoTransaction(
+      targetId,
+      amount,
+      'manual_minsaldo',
+      `minsaldo_by_${ctx.from.id}`
+    );
+
+    await ctx.reply(
+      `✅ Saldo user ID <code>${targetId}</code> berhasil dikurangi Rp${amount.toLocaleString()}.\n` +
+      `💰 Saldo sekarang: <b>Rp${newSaldo.toLocaleString()}</b>`,
+      { parse_mode: 'HTML' }
+    );
+
+    try {
+      await bot.telegram.sendMessage(
+        targetId,
+        '💸 Saldo kamu telah <b>dikurangi</b> sebesar <b>Rp ' + amount.toLocaleString() + '</b>.\n' +
+        '💳 Saldo sekarang: <b>Rp ' + newSaldo.toLocaleString() + '</b>.',
+        { parse_mode: 'HTML' }
+      );
+    } catch (e) {
+      console.error('Gagal kirim notif ke user saat pengurangan saldo:', e.message);
+    }
+
+    if (NOTIF_TOPUP_GROUP) {
+      try {
+        let targetInfo;
+        try {
+          targetInfo = await bot.telegram.getChat(targetId);
+        } catch (e) {
+          targetInfo = {};
+        }
+
+        let userLabel;
+        if (targetInfo.username) {
+          userLabel = targetInfo.username;
+        } else if (targetInfo.first_name) {
+          userLabel = targetInfo.first_name;
+        } else {
+          userLabel = String(targetId);
+        }
+
+        const waktu = new Date().toLocaleString('id-ID', {
+          timeZone: TIME_ZONE,
+          year: 'numeric',
+          month: '2-digit',
+          day: '2-digit',
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+
+        const notifPotong =
+          '<blockquote>\n' +
+          '━━ PENGURANGAN SALDO ━━\n' +
+          '<code>\n' +
+          `👤 User   : ${userLabel}\n` +
+          `💸 Jumlah : Rp ${amount.toLocaleString()}\n` +
+          `📅 Tanggal: ${waktu}\n` +
+          '</code>\n' +
+          '━━━━━━━━━━━━━━━━━━━━\n' +
+          '</blockquote>';
+
+        await bot.telegram.sendMessage(GROUP_ID, notifPotong, {
+          parse_mode: 'HTML',
+        });
+      } catch (e) {
+        console.error('Gagal kirim notif pengurangan saldo ke grup:', e.message);
+      }
+    }
+  } catch (error) {
+    console.error('Error ambil/update saldo user:', error.message || error);
+    return ctx.reply('❌ Gagal mengurangi saldo. Coba lagi nanti.');
+  }
 });
 
 // Manual admin command: /deluser <user_id>
@@ -3547,33 +3515,28 @@ bot.command('setflag', async (ctx) => {
     );
   }
 
-  db.run(
-    'UPDATE users SET flag_status = ?, flag_note = ? WHERE user_id = ?',
-    [rawStatus, note || null, targetId],
-    function (err) {
-      if (err) {
-        logger.error('❌ Gagal mengupdate flag_status user:', err.message);
-        return ctx.reply('❌ Terjadi kesalahan saat mengupdate status user.');
-      }
-
-      if (this.changes === 0) {
-        return ctx.reply(
-          `⚠️ User dengan ID ${targetId} tidak ditemukan di tabel users.`,
-          { parse_mode: 'Markdown' }
-        );
-      }
-
-      let label = '✅ NORMAL';
-      if (rawStatus === 'WATCHLIST') label = '⚠️ WATCHLIST';
-      else if (rawStatus === 'NAKAL') label = '🚫 NAKAL';
-
-      const noteText = note ? `\n📝 Catatan: ${note}` : '';
-      ctx.reply(
-        `✅ Status user \`${targetId}\` berhasil diubah menjadi: ${label}${noteText}`,
+  try {
+    const result = await updateUserFlagById(db, targetId, rawStatus, note || null);
+    if (result.changes === 0) {
+      return ctx.reply(
+        `⚠️ User dengan ID ${targetId} tidak ditemukan di tabel users.`,
         { parse_mode: 'Markdown' }
       );
     }
-  );
+
+    let label = '✅ NORMAL';
+    if (rawStatus === 'WATCHLIST') label = '⚠️ WATCHLIST';
+    else if (rawStatus === 'NAKAL') label = '🚫 NAKAL';
+
+    const noteText = note ? `\n📝 Catatan: ${note}` : '';
+    ctx.reply(
+      `✅ Status user \`${targetId}\` berhasil diubah menjadi: ${label}${noteText}`,
+      { parse_mode: 'Markdown' }
+    );
+  } catch (error) {
+    logger.error('❌ Gagal mengupdate flag_status user:', error.message || error);
+    return ctx.reply('❌ Terjadi kesalahan saat mengupdate status user.');
+  }
 });
 
 bot.command('lastbroadcast', async (ctx) => {
@@ -3633,13 +3596,8 @@ async function sendMainMenu(ctx) {
   // Ambil saldo user
   let saldo = 0;
   try {
-    const row = await new Promise((resolve, reject) => {
-      db.get('SELECT saldo FROM users WHERE user_id = ?', [userId], (err, row) => {
-        if (err) reject(err);
-        else resolve(row);
-      });
-    });
-    saldo = row && typeof row.saldo === 'number' ? row.saldo : 0;
+    const currentSaldo = await getUserSaldoById(db, userId);
+    saldo = currentSaldo == null ? 0 : Number(currentSaldo);
   } catch (e) {
     saldo = 0;
     logger.error('Gagal mengambil saldo di sendMainMenu:', e);
@@ -4455,16 +4413,7 @@ bot.command('cekqris', async (ctx) => {
 
         // kirim notif ke user
         try {
-          // ambil saldo terbaru
-          const userRow = await new Promise((resolve, reject) => {
-            db.get(
-              'SELECT saldo FROM users WHERE user_id = ?',
-              [row.user_id],
-              (err, r) => (err ? reject(err) : resolve(r))
-            );
-          });
-
-          const saldoNow = userRow?.saldo || 0;
+          const saldoNow = await getUserSaldoById(db, row.user_id) || 0;
 
           const msgUser =
             '✅ <b>Topup Saldo Berhasil (Manual Sync)</b>\n\n' +
@@ -8065,19 +8014,8 @@ bot.action('list_reseller', async (ctx) => {
         ? (username.startsWith('@') ? username : '@' + username)
         : `ID:${userId}`;
 
-      // Ambil saldo dari tabel users
-      const saldoRow = await new Promise((resolve) => {
-        db.get(
-          'SELECT saldo FROM users WHERE user_id = ?',
-          [userId],
-          (err, row) => {
-            if (err || !row) return resolve(null);
-            resolve(row);
-          }
-        );
-      });
-
-      const saldoText = saldoRow ? `Rp${saldoRow.saldo}` : 'Rp0';
+      const saldoNow = await getUserSaldoById(db, userId);
+      const saldoText = `Rp${Number(saldoNow || 0)}`;
 
       lines.push(`${no}. ${displayName} (${userId}) — Saldo: ${saldoText}`);
       no++;

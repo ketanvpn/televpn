@@ -42,6 +42,14 @@ async function listLatestUsersWithSaldo(db, limit = 10) {
   return getAll(db, 'SELECT user_id, saldo FROM users ORDER BY id DESC LIMIT ?', [Number(limit)]);
 }
 
+async function updateUserFlagById(db, userId, flagStatus, flagNote) {
+  return run(db, 'UPDATE users SET flag_status = ?, flag_note = ? WHERE user_id = ?', [flagStatus, flagNote, userId]);
+}
+
+async function setUserSaldoById(db, userId, saldo) {
+  return run(db, 'UPDATE users SET saldo = ? WHERE user_id = ?', [saldo, userId]);
+}
+
 module.exports = {
   getUserSaldoById,
   addUserSaldo,
@@ -52,4 +60,6 @@ module.exports = {
   ensureUserExists,
   deleteUserById,
   listLatestUsersWithSaldo,
+  updateUserFlagById,
+  setUserSaldoById,
 };
