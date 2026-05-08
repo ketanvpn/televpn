@@ -24,6 +24,13 @@ async function listServerIdsAndNames(db) {
   return getAll(db, 'SELECT id, nama_server FROM Server');
 }
 
+async function listServersByResellerAccess(db, isReseller) {
+  if (isReseller) {
+    return getAll(db, 'SELECT * FROM Server');
+  }
+  return getAll(db, 'SELECT * FROM Server WHERE is_reseller_only = 0 OR is_reseller_only IS NULL');
+}
+
 async function deleteServerById(db, serverId) {
   return run(db, 'DELETE FROM Server WHERE id = ?', [serverId]);
 }
@@ -86,6 +93,7 @@ module.exports = {
   getServerCreateQuotaById,
   listAllServers,
   listServerIdsAndNames,
+  listServersByResellerAccess,
   deleteServerById,
   deleteAllServers,
   updateServerFieldById,

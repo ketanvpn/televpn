@@ -165,6 +165,7 @@ const {
   getServerCreateQuotaById,
   listAllServers,
   listServerIdsAndNames,
+  listServersByResellerAccess,
   deleteServerById,
   deleteAllServers,
   updateServerFieldById,
@@ -385,24 +386,21 @@ async function getCreateUsageToday(userId) {
 
 /////////
 async function checkServerAccess(serverId, userId) {
-  return new Promise((resolve, reject) => {
-    db.get('SELECT is_reseller_only FROM Server WHERE id = ?', [serverId], async (err, row) => {
-      if (err) return reject(err);
-      // jika server tidak ada => tolak (caller menangani pesan)
-      if (!row) return resolve({ ok: false, reason: 'not_found' });
-      const flag = row.is_reseller_only === 1 || row.is_reseller_only === '1';
-      if (!flag) return resolve({ ok: true }); // publik
-      // jika reseller-only, cek apakah user terdaftar reseller
-      try {
-        const isR = await isUserReseller(userId);
-        if (isR) return resolve({ ok: true });
-        return resolve({ ok: false, reason: 'reseller_only' });
-      } catch (e) {
-        // fallback: tolak akses
-        return resolve({ ok: false, reason: 'reseller_only' });
-      }
-    });
-  });
+  try {
+    const row = await getServerById(db, serverId);
+    if (!row) return { ok: false, reason: 'not_found' };
+    const flag = row.is_reseller_only === 1 || row.is_reseller_only === '1';
+    if (!flag) return { ok: true };
+    try {
+      const isR = await isUserReseller(userId);
+      if (isR) return { ok: true };
+      return { ok: false, reason: 'reseller_only' };
+    } catch (e) {
+      return { ok: false, reason: 'reseller_only' };
+    }
+  } catch (err) {
+    throw err;
+  }
 }
 
 // Menyimpan informasi penggunaan trial user (tanggal + hitungan per hari)
@@ -1479,18 +1477,17 @@ async function renderPickServer(ctx) {
   const st = getFlow(userId); if (!st) return;
 
   try {
-    db.all(`SELECT id, nama_server FROM Server ORDER BY id ASC`, [], async (err, rows) => {
-      if (err || !rows || rows.length === 0) {
-        return showErrorOnMenu(ctx, 'Server tidak tersedia.');
-      }
-      const buttons = rows.map(s => [{ text: s.nama_server, callback_data: `flow_pick_server:${s.id}` }]);
-      buttons.push([{ text: '🔙 Kembali', callback_data: 'send_main_menu' }]);
+    const rows = await listServerIdsAndNames(db);
+    if (!rows || rows.length === 0) {
+      return showErrorOnMenu(ctx, 'Server tidak tersedia.');
+    }
+    const buttons = rows.map(s => [{ text: s.nama_server, callback_data: `flow_pick_server:${s.id}` }]);
+    buttons.push([{ text: '🔙 Kembali', callback_data: 'send_main_menu' }]);
 
-      await sendCleanMenu(ctx,
-        `<b>${st.mode === 'trial' ? 'Trial' : 'Buat Akun'} ${st.type.toUpperCase()}</b>\nPilih server:`,
-        { parse_mode:'HTML', reply_markup:{ inline_keyboard: buttons } }
-      );
-    });
+    await sendCleanMenu(ctx,
+      `<b>${st.mode === 'trial' ? 'Trial' : 'Buat Akun'} ${st.type.toUpperCase()}</b>\nPilih server:`,
+      { parse_mode:'HTML', reply_markup:{ inline_keyboard: buttons } }
+    );
   } catch {
     return showErrorOnMenu(ctx, 'Gagal memuat daftar server.');
   }
@@ -1505,9 +1502,7 @@ async function renderConfirm(ctx) {
   const trialCfg = await getTrialConfig();
   const days = Math.max(1, Math.ceil(trialCfg.durationHours / 24));
 
-  const srow = await new Promise((resolve)=> {
-    db.get(`SELECT nama_server FROM Server WHERE id=?`, [serverId], (e, r) => resolve(r || null));
-  });
+  const srow = await getServerById(db, serverId);
 
   const namaServer = srow?.nama_server || `Server #${serverId}`;
 
@@ -9436,15 +9431,7 @@ async function startSelectServer(ctx, action, type, page = 0) {
 
 try {
   const isR = await isUserReseller(ctx.from.id);
-  const query = isR
-    ? 'SELECT * FROM Server'
-    : 'SELECT * FROM Server WHERE is_reseller_only = 0 OR is_reseller_only IS NULL';
-
-  db.all(query, [], (err, servers) => {
-    if (err) {
-      logger.error('⚠️ Error fetching servers:', err.message);
-      return ctx.reply('⚠️ Tidak ada server yang tersedia saat ini.', { parse_mode: 'HTML' });
-    }
+  const servers = await listServersByResellerAccess(db, isR);
 
     // ==== mulai logika pagination di bawah ini ====
     const serversPerPage = 6;
@@ -9544,7 +9531,6 @@ try {
 
 
     userState[ctx.chat.id] = { step: `${action}_username_${type}`, page: currentPage };
-  });
 } catch (error) {
   logger.error(`❌ Error saat memulai proses ${action} untuk ${type}:`, error);
   await ctx.reply(`❌ *GAGAL!* Terjadi kesalahan saat memproses permintaan.`, { parse_mode: 'Markdown' });
@@ -11996,17 +11982,8 @@ bot.action(/edit_auth_(\d+)/, async (ctx) => {
   const serverId = ctx.match[1];
   logger.info(`User ${ctx.from.id} memilih untuk mengedit auth server dengan ID: ${serverId}`);
 
-  // Ambil data server untuk ditampilkan info
-  db.get(
-    'SELECT auth, domain, nama_server FROM Server WHERE id = ?',
-    [serverId],
-    async (err, row) => {
-      if (err) {
-        logger.error('Kesalahan saat mengambil data server untuk edit auth:', err.message);
-        await ctx.reply('⚠️ Terjadi kesalahan saat mengambil data server.');
-        return;
-      }
-
+  try {
+      const row = await getServerById(db, serverId);
       if (!row) {
         await ctx.reply('⚠️ Server tidak ditemukan.');
         return;
@@ -12041,8 +12018,10 @@ bot.action(/edit_auth_(\d+)/, async (ctx) => {
           '❌ Ketik *batal* untuk membatalkan.',
         { parse_mode: 'Markdown' }
       );
-    }
-  );
+  } catch (error) {
+    logger.error('Kesalahan saat mengambil data server untuk edit auth:', error.message || error);
+    await ctx.reply('⚠️ Terjadi kesalahan saat mengambil data server.');
+  }
 });
 
 bot.action(/edit_domain_(\d+)/, async (ctx) => {
