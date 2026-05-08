@@ -50,6 +50,10 @@ async function setUserSaldoById(db, userId, saldo) {
   return run(db, 'UPDATE users SET saldo = ? WHERE user_id = ?', [saldo, userId]);
 }
 
+async function listAllUserIds(db) {
+  return getAll(db, 'SELECT user_id FROM users', []);
+}
+
 module.exports = {
   getUserSaldoById,
   addUserSaldo,
@@ -62,4 +66,5 @@ module.exports = {
   listLatestUsersWithSaldo,
   updateUserFlagById,
   setUserSaldoById,
+  listAllUserIds,
 };

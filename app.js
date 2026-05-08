@@ -142,6 +142,7 @@ const {
   listLatestUsersWithSaldo,
   updateUserFlagById,
   setUserSaldoById,
+  listAllUserIds,
 } = require('./src/repositories/userRepository');
 const { run } = require('./src/repositories/sqliteRepo');
 const {
@@ -3915,12 +3916,7 @@ bot.command('broadcast', async (ctx) => {
 
   try {
     // Ambil semua user dari tabel users
-    const rows = await new Promise((resolve, reject) => {
-      db.all('SELECT user_id FROM users', [], (err, rows) => {
-        if (err) return reject(err);
-        resolve(rows || []);
-      });
-    });
+    const rows = await listAllUserIds(db);
 
     if (rows.length === 0) {
       return ctx.reply('ℹ️ Tidak ada user di database untuk dikirimi broadcast.', {
@@ -4173,12 +4169,7 @@ bot.command('broadcastmem', async (ctx) => {
     }
 
     // Ambil semua user dari tabel users
-    const rows = await new Promise((resolve, reject) => {
-      db.all('SELECT user_id FROM users', [], (err, rows) => {
-        if (err) return reject(err);
-        resolve(rows || []);
-      });
-    });
+    const rows = await listAllUserIds(db);
 
     if (!rows || rows.length === 0) {
       return ctx.reply(
@@ -5627,11 +5618,8 @@ loadResellerCacheFromFile();
 function getBroadcastTargetsFromMenu(target) {
   return new Promise((resolve, reject) => {
     if (target === 'all') {
-      db.all('SELECT user_id FROM users', [], (err, rows) => {
-        if (err) {
-          logger.error('⚠️ Kesalahan saat mengambil daftar pengguna (broadcast menu all):', err.message);
-          return reject(err);
-        }
+      listAllUserIds(db)
+        .then((rows) => {
         const set = new Set();
         if (rows && rows.length > 0) {
           rows.forEach((r) => {
@@ -5642,7 +5630,11 @@ function getBroadcastTargetsFromMenu(target) {
           });
         }
         resolve(set);
-      });
+        })
+        .catch((err) => {
+          logger.error('⚠️ Kesalahan saat mengambil daftar pengguna (broadcast menu all):', err.message);
+          reject(err);
+        });
       return;
     }
 
@@ -5662,11 +5654,8 @@ function getBroadcastTargetsFromMenu(target) {
     }
 
     if (target === 'member') {
-      db.all('SELECT user_id FROM users', [], (err, rows) => {
-        if (err) {
-          logger.error('⚠️ Kesalahan saat mengambil daftar pengguna (broadcast menu member):', err.message);
-          return reject(err);
-        }
+      listAllUserIds(db)
+        .then((rows) => {
 
         const set = new Set();
         if (rows && rows.length > 0) {
@@ -5684,7 +5673,11 @@ function getBroadcastTargetsFromMenu(target) {
           });
         }
         resolve(set);
-      });
+        })
+        .catch((err) => {
+          logger.error('⚠️ Kesalahan saat mengambil daftar pengguna (broadcast menu member):', err.message);
+          reject(err);
+        });
       return;
     }
 
@@ -6088,15 +6081,7 @@ async function sendDailyReport(isManual = false) {
     ]);
 
     // === Total user & reseller ===
-    const totalUsers = await new Promise((resolve) => {
-      db.get('SELECT COUNT(*) AS count FROM users', [], (err, row) => {
-        if (err) {
-          logger.error('Gagal menghitung total users:', err.message);
-          return resolve(0);
-        }
-        resolve(row ? row.count : 0);
-      });
-    });
+    const totalUsers = await countUsers(db);
 
     let resellerSet = new Set();
     let totalReseller = 0;
@@ -7199,15 +7184,7 @@ bot.action('monitor_panel', async (ctx) => {
     const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).getTime();
 
     // ======= RINGKASAN PENGGUNA =======
-    const totalUsers = await new Promise((resolve) => {
-      db.get('SELECT COUNT(*) AS count FROM users', [], (err, row) => {
-        if (err) {
-          logger.error('Gagal menghitung total users:', err.message);
-          return resolve(0);
-        }
-        resolve(row ? row.count : 0);
-      });
-    });
+    const totalUsers = await countUsers(db);
 
     // ======= RINGKASAN AKUN =======
     const [totalAccounts, totalActiveAccounts, totalExpiredAccounts] = await Promise.all([
